@@ -1,0 +1,26 @@
+{
+  "app": "esptube-show",
+  "v": 1,
+  "name": "Grand Tour",
+  "loop": false,
+  "steps": [
+    { "act": "white",  "dur": 3,  "text": "OH HELLO THERE",                "cap": "hello" },
+    { "act": "white",  "dur": 3,  "text": "DO YOU HAVE THE TIME",           "cap": "the time?" },
+    { "act": "preset", "dur": 4,  "preset": 1,                              "cap": "time, in text" },
+    { "act": "nixie",  "dur": 4,  "effect": "scroll", "ms": 200, "text": "NOT IMPRESSED?", "cap": "cheek" },
+    { "act": "preset", "dur": 4,  "preset": 0,                              "cap": "time, in nixie" },
+    { "act": "nixie",  "dur": 3,  "effect": "scroll", "ms": 180, "text": "OH, YOU WANT MORE", "cap": "more?" },
+    { "act": "nixie",  "dur": 3,  "effect": "flash",  "ms": 220, "text": "ARE YOU PAYING ATTENTION", "cap": "attention!" },
+    { "act": "anim",   "dur": 9,  "id": "news",     "params": { "output": "native" }, "cap": "the news" },
+    { "act": "anim",   "dur": 5,  "id": "plasma",   "params": {},                     "cap": "colors" },
+    { "act": "anim",   "dur": 4,  "id": "ledwave",  "params": { "mode": "rainbow" },  "cap": "the LEDs" },
+    { "act": "anim",   "dur": 5,  "id": "matrix",   "params": {},                     "cap": "images" },
+    { "act": "anim",   "dur": 6,  "id": "ticker",   "params": { "source": "crypto", "cryptoId": "bitcoin", "cryptoCur": "usd", "output": "native" }, "cap": "live data" },
+    { "act": "anim",   "dur": 3,  "id": "starfield","params": {},                     "cap": "bombast" },
+    { "act": "anim",   "dur": 3,  "id": "plasma",   "params": { "speed": 90 },        "cap": "MORE!" },
+    { "act": "anim",   "dur": 2,  "id": "ledwave",  "params": { "mode": "strobe" },   "cap": "!!!" },
+    { "act": "nixie",  "dur": 11, "effect": "vpage",  "ms": 1500, "text": "THIS PLACE IS A MESSAGE. PAY ATTENTION TO IT. THIS PLACE IS NOT A PLACE OF HONOR. WHAT IS HERE WAS DANGEROUS AND REPULSIVE TO US.", "cap": "the warning" },
+    { "act": "nixie",  "dur": 9,  "effect": "scroll", "ms": 170, "text": "THE DANGER IS STILL PRESENT, IN YOUR TIME, AS IT WAS IN OURS. THIS PLACE IS BEST SHUNNED AND LEFT UNINHABITED.", "cap": "..." },
+    { "act": "preset", "dur": 3,  "preset": 0,                              "cap": "home, to nixie" }
+  ]
+}

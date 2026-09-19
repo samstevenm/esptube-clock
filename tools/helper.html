@@ -717,6 +717,18 @@ python3 tools/bridge/bridge.py serve         # leave it running; this panel take
     <div class="note">Tick ☑ the scenes to include, then ▶ Start — it shows each in turn, leaving your
       editor untouched. Great for a rotating kid dashboard.</div>
     <hr class="divider">
+    <div class="row tight" id="showBar">
+      <span class="lbl" style="margin:0">🎬 Show</span>
+      <button class="primary mini" id="showDemoBtn" title="Run the built-in demo — the clock through all its paces, silly → bombastic → the warning → back to nixie">▶ Play demo</button>
+      <button class="mini ghost" id="showStopBtn" title="Stop the show and hand back to the clock">■ Stop</button>
+      <span style="flex:1"></span>
+      <button class="tiny ghost" id="showExportBtn" title="Download the demo as an esptube-show .json (a timed cue-list you can edit and share)">⤓ Export</button>
+      <button class="tiny ghost" id="showImportBtn" title="Load and play an esptube-show .json">⤒ Import & play</button>
+      <input type="file" id="showImportFile" accept="application/json,.json" style="display:none">
+      <span class="note" id="showNow" style="margin:0;color:var(--amber)"></span>
+    </div>
+    <div class="note">A <b>show</b> is a timed cue-list (<code>esptube-show</code> JSON): each step is a native-nixie / face / LED / animation action with a duration — the SMIL / cue-list seq model, importable & exportable as text.</div>
+    <hr class="divider">
     <div class="row tight">
       <label class="inl"><input type="checkbox" id="restoreLast"> 🔁 Restore last scene on connect</label>
       <span class="note" style="margin:0">re-pushes after the clock restarts — off (default) = the clock's own 🕯️ face wins</span>
@@ -2886,6 +2898,84 @@ function cycleStart(){ const cfg=loadCycleCfg(); const names=sceneNames().filter
 function cycleStop(){ cycle.on=false; if(cycle.timer){ clearInterval(cycle.timer); cycle.timer=null; } cycleUpdateBtn(); }
 function cycleToggle(){ cycle.on?cycleStop():cycleStart(); }
 function cycleNext(){ if(!cycle.on){ cycleStart(); return; } cycle.idx=(cycle.idx+1)%cycle.order.length; cycleShow(); cycleArmTimer(); }
+/* ============================================================================
+   SHOW — a timed cue-list (esptube-show JSON). An ordered list of steps, each an
+   action (native nixie / device face / LED / animation / white text) held for
+   `dur` seconds. This is the show-control "cue list" model — the same seq-of-timed-
+   media idea as W3C SMIL and show-control cue lists — kept as compact JSON that
+   extends our scene files, so a show imports/exports as one .json.
+     step = { act, dur, ...args, cap? }
+       act:'nixie'    {text, effect:'scroll'|'flash'|'static'|'vscroll'|'vpage', ms}
+       act:'countdown'{seconds}
+       act:'preset'   {preset:0..4}      device face (0 nixie · 1 digital · 2 ledshow · 3 off · 4 date)
+       act:'white'    {text, font, color, bg, size}   primitive built-in-font text (pixels)
+       act:'led'      {led:'rainbow'|'breathe'|'comet'|'off'|'solid', rgb?}
+       act:'anim'     {id, params}        run a studio effect (native or pixels) for the step
+       act:'clear'
+   ============================================================================ */
+let showRun=null;                                            // active-show cancel token
+async function pushSpanText(text,o={}){ const list=populatedList(); if(!list.length) return; const W=spanW(list.length);
+  const c=el('canvas',{width:W,height:CH}), g=c.getContext('2d');
+  g.fillStyle=o.bg||'#000'; g.fillRect(0,0,W,CH);
+  drawSpanLine(g,W,CH,String(text||''),o.color||'#fff',o.bg||'#000',o.font||'mono',o.size||120);
+  for(let k=0;k<list.length;k++){ const px=g.getImageData(spanX(k),0,CW,CH).data; try{ await pushFrame(list[k],px); }catch(e){} } }
+async function applyShowStep(s){
+  engine.pushing=false;                                      // halt any prior animation (no /nixie/stop flicker)
+  switch(s.act){
+    case 'nixie':     return sendNative({effect:s.effect||'scroll', text:fmtNative(s.text||''), ms:s.ms||220});
+    case 'countdown': return sendNative({countdown:Math.max(1,s.seconds|0)});
+    case 'preset':    return postBare('/preset/'+(s.preset|0));
+    case 'white':     return pushSpanText(s.text||'', {font:s.font||'mono',color:s.color||'#ffffff',bg:s.bg||'#000000',size:s.size||120});
+    case 'led':       return s.led==='solid' ? postJson('/led/solid', s.rgb||{r:255,g:120,b:20}) : postBare('/led/'+(s.led||'rainbow'));
+    case 'anim':      selectAnim(s.id); if(s.params) Object.assign(engine.params,s.params); engine.lastNativeCmd=null;
+                      if(currentAnim().poll) startPoller(); startPushing(); return;
+    case 'clear':     return postBare('/tubes/clear');
+  }
+}
+const _showSleep=(ms,tok)=>new Promise(r=>{ const t=setTimeout(r,ms); tok.timers.push(t); });
+function showStop(quiet){ if(showRun){ showRun.cancel=true; showRun.timers.forEach(clearTimeout); showRun=null; }
+  engine.pushing=false; const wasNative=engine.lastNativeSent; engine.lastNativeSent=false; engine.lastNativeCmd=null;
+  if(!quiet){ act(postBare('/nixie/stop'),'Show stopped'); } const el2=$('#showNow'); if(el2) el2.textContent=''; }
+async function playShow(show){
+  showStop(true); cycleStop(); setHandsOff(false);
+  const steps=(show&&show.steps)||[]; if(!steps.length){ toast('Empty show','bad'); return; }
+  const tok={cancel:false,timers:[]}; showRun=tok;
+  toast('🎬 '+(show.name||'Show')+' — '+steps.length+' steps','ok');
+  do { for(let i=0;i<steps.length;i++){ if(tok.cancel) return; const s=steps[i];
+        const el3=$('#showNow'); if(el3) el3.textContent=(i+1)+'/'+steps.length+(s.cap?' · '+s.cap:'');
+        try{ await applyShowStep(s); }catch(e){}
+        await _showSleep(Math.max(250,(s.dur||3)*1000), tok); }
+     } while(!tok.cancel && show.loop);
+  if(!tok.cancel){ engine.pushing=false; showRun=null; const el4=$('#showNow'); if(el4) el4.textContent='✓ done';
+    act(postBare('/preset/0')); }                            // settle back on the nixie clock
+}
+function showExport(show){ downloadJSON('esptube-show-'+String(show.name||'show').replace(/[^a-z0-9_-]+/gi,'_').toLowerCase()+'.json', show); }
+function showImportPlay(file){ const r=new FileReader();
+  r.onload=()=>{ try{ const o=JSON.parse(r.result); if(o.app!=='esptube-show') throw new Error('not an esptube-show file'); playShow(o); }
+                 catch(e){ toast('Import failed: '+(e&&e.message||e),'bad'); } };
+  r.readAsText(file); }
+/* Built-in demo — the clock through its paces, silly → bombastic → the warning → home. */
+function demoShow(){ return { app:'esptube-show', v:1, name:'Grand Tour', loop:false, steps:[
+  {act:'white',  dur:3, text:'OH HELLO THERE',            cap:'hello'},
+  {act:'white',  dur:3, text:'DO YOU HAVE THE TIME',       cap:'the time?'},
+  {act:'preset', dur:4, preset:1,                          cap:'time, in text'},
+  {act:'nixie',  dur:4, effect:'scroll', ms:200, text:'NOT IMPRESSED?', cap:'cheek'},
+  {act:'preset', dur:4, preset:0,                          cap:'time, in nixie'},
+  {act:'nixie',  dur:3, effect:'scroll', ms:180, text:'OH, YOU WANT MORE', cap:'more?'},
+  {act:'nixie',  dur:3, effect:'flash',  ms:220, text:'ARE YOU PAYING ATTENTION', cap:'attention!'},
+  {act:'anim',   dur:9, id:'news',   params:{output:'native'}, cap:'the news'},
+  {act:'anim',   dur:5, id:'plasma', params:{},              cap:'colors'},
+  {act:'anim',   dur:4, id:'ledwave',params:{mode:'rainbow'},cap:'the LEDs'},
+  {act:'anim',   dur:5, id:'matrix', params:{},              cap:'images'},
+  {act:'anim',   dur:6, id:'ticker', params:{source:'crypto',cryptoId:'bitcoin',cryptoCur:'usd',output:'native'}, cap:'live data'},
+  {act:'anim',   dur:3, id:'starfield', params:{},           cap:'bombast'},
+  {act:'anim',   dur:3, id:'plasma', params:{speed:90},      cap:'MORE!'},
+  {act:'anim',   dur:2, id:'ledwave',params:{mode:'strobe'}, cap:'!!!'},
+  {act:'nixie',  dur:11, effect:'vpage', ms:1500, text:'THIS PLACE IS A MESSAGE. PAY ATTENTION TO IT. THIS PLACE IS NOT A PLACE OF HONOR. WHAT IS HERE WAS DANGEROUS AND REPULSIVE TO US.', cap:'the warning'},
+  {act:'nixie',  dur:9,  effect:'scroll', ms:170, text:'THE DANGER IS STILL PRESENT, IN YOUR TIME, AS IT WAS IN OURS. THIS PLACE IS BEST SHUNNED AND LEFT UNINHABITED.', cap:'...'},
+  {act:'preset', dur:3, preset:0,                          cap:'home, to nixie'},
+]}; }
+
 function mergeTube(t){ const d=defaultTube(); const out=Object.assign(d,t||{});
   for(const k of ['text','color','picture','weather','signal','clock','ticker','custom','html']) out[k]=Object.assign(defaultTube()[k],(t&&t[k])||{});
   out.comps=Array.isArray(out.comps)?out.comps.map(c=>Object.assign(defaultComp(),c||{})):[];   // complications ride along in scenes; always an array
@@ -3470,6 +3560,11 @@ function wireGlobals(){
   $('#sceneImportBtn').onclick=()=>$('#sceneImportFile').click();
   $('#sceneImportFile').addEventListener('change',e=>{ if(e.target.files[0]) sceneImportFile(e.target.files[0]); e.target.value=''; });
   $('#cycleBtn').onclick=cycleToggle; $('#cycleNextBtn').onclick=cycleNext;
+  $('#showDemoBtn').onclick=()=>playShow(demoShow());
+  $('#showStopBtn').onclick=()=>showStop();
+  $('#showExportBtn').onclick=()=>showExport(demoShow());
+  $('#showImportBtn').onclick=()=>$('#showImportFile').click();
+  $('#showImportFile').addEventListener('change',e=>{ if(e.target.files[0]) showImportPlay(e.target.files[0]); e.target.value=''; });
   $('#cycleIv').addEventListener('change',()=>{ const c=loadCycleCfg(); c.interval=Math.max(3,Math.min(3600,+$('#cycleIv').value||30)); saveCycleCfg(c); if(cycle.on) cycleArmTimer(); });
   $('#cycleAll').onclick=()=>{ const c=loadCycleCfg(); c.names=sceneNames(); saveCycleCfg(c); renderSceneList(); };
   $('#cycleNone').onclick=()=>{ const c=loadCycleCfg(); c.names=[]; saveCycleCfg(c); renderSceneList(); };
