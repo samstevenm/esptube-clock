@@ -1685,7 +1685,7 @@ async function fetchTickerInto(i,silent=false){ const s=tubes[i].ticker; s.err='
       const j=await r.json(); const row=j[id]; if(!row) throw new Error('coin not found');
       s.value=row[cur]; s.change=row[cur+'_24h_change']; s.changeIsPct=true; s.dispLabel=s.label||(s.cryptoId||'').toUpperCase(); s.unit=cur.toUpperCase(); }
     else if(s.source==='stocks'){ const sym=(s.symbol||'').trim().toUpperCase(); if(!sym) throw new Error('set a symbol');
-      const key=s.apiKey||apiKeys.finnhub; if(!key) throw new Error('add a free Finnhub key (🔑 saved keys)');
+      const key=(apiKeys.finnhub||'').trim()||(s.apiKey||'').trim(); if(!key) throw new Error('add a free Finnhub key (🔑 saved keys)');
       const r=await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(sym)}&token=${encodeURIComponent(key)}`);
       if(r.status===401||r.status===403) throw new Error('bad API key'); const j=await r.json();
       if(j.c==null||j.c===0) throw new Error('no quote for '+sym);
@@ -2063,7 +2063,7 @@ function ctlTicker(i,t){ const s=t.ticker;
       el('button',{class:'mini',onclick:()=>fetchTickerInto(i)},'📈 Fetch')]),
     el('div',{class:'row tight'},[el('label',{class:'inl'},[ap,'Auto-fetch & push']),el('label',{class:'inl'},['Value',col]),el('label',{class:'inl'},['BG',bg])]),
     el('div',{class:'row tight'},[dec,el('label',{class:'inl'},[scc,'Show ▲/▼ change'])]),
-    el('div',{class:'note',style:'margin:0'},'Crypto & weather need no key; stocks use a free Finnhub key (🔑 saved keys fill blanks). Fetched from your browser on the interval above.')]);
+    el('div',{class:'note',style:'margin:0'},'Crypto & weather need no key; stocks use a free Finnhub key — the global 🔑 saved key is used first (a key here only overrides it). Fetched from your browser on the interval above.')]);
   setTimeout(()=>syncTickerSub(i),0); return box; }
 function ctlCustom(i,t){ const s=t.custom;
   const drop=el('div',{class:'drop'},'Drop layer image, or click');
@@ -2498,7 +2498,7 @@ const ANIMS={
       {k:'cryptoId',label:'Coin id',type:'text',def:'bitcoin'},
       {k:'cryptoCur',label:'Currency',type:'text',def:'usd'},
       {k:'symbol',label:'Stock symbol',type:'text',def:'AAPL'},
-      {k:'apiKey',label:'Finnhub API key',type:'text',def:''},
+      {k:'apiKey',label:'Finnhub key (optional — the global 🔑 key is used first)',type:'text',def:''},
       {k:'place',label:'Weather place',type:'text',def:'San Francisco'},
       {k:'units',label:'Units',type:'select',options:[['f','°F'],['c','°C']],def:'f'},
       {k:'url',label:'JSON URL',type:'text',def:''},
@@ -2520,7 +2520,7 @@ const ANIMS={
         const j=await r.json(); const row=j[p.cryptoId.toLowerCase()]; if(!row) throw new Error('coin not found');
         st.value=row[p.cryptoCur.toLowerCase()]; st.change=row[p.cryptoCur.toLowerCase()+'_24h_change']; st.changeIsPct=true; st.label=p.label||p.cryptoId.toUpperCase(); st.unit=p.cryptoCur.toUpperCase(); }
       else if(p.source==='stocks'){ const sym=(p.symbol||'').trim().toUpperCase(); if(!sym) throw new Error('set a symbol');
-        const key=p.apiKey||apiKeys.finnhub; if(!key){ throw new Error('add a free Finnhub API key (🔑 saved keys)'); }
+        const key=(apiKeys.finnhub||'').trim()||(p.apiKey||'').trim(); if(!key){ throw new Error('add a free Finnhub API key (🔑 saved keys)'); }
         const r=await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(sym)}&token=${encodeURIComponent(key)}`);
         if(r.status===401||r.status===403) throw new Error('bad/again API key'); const j=await r.json();
         if(j.c==null || j.c===0) throw new Error('no quote for '+sym);
@@ -2567,7 +2567,7 @@ const ANIMS={
       let k='news:papertube:'+p.bg+':'; for(let i=0;i<n;i++) k+=((base+i)%hl.length)+','; return k; },
     async poll(p,st){ st.err=''; try{
       const feed=(p.feedUrl||'').trim(); if(!feed) throw new Error('set a feed URL');
-      const nk=p.apiKey||apiKeys.rss2json;
+      const nk=(apiKeys.rss2json||'').trim()||(p.apiKey||'').trim();
       const u='https://api.rss2json.com/v1/api.json?rss_url='+encodeURIComponent(feed)+(nk?'&api_key='+encodeURIComponent(nk)+'&count=20':'');
       const r=await fetch(u); const j=await r.json();
       if(j.status!=='ok'||!Array.isArray(j.items)||!j.items.length) throw new Error(j.message||'no headlines');
