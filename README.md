@@ -5,6 +5,18 @@ rebuilt: custom firmware that drives the displays + an HTTP REST API, a local WY
 console for pushing arbitrary content and animations, and full standalone button control.
 Documented end-to-end for a Quarto write-up (diligentservices.io).
 
+## Gallery
+
+The clock's own faces — the **real nixie glyph set** (cathode-wire glyphs, neon bloom, ghost
+cathodes, per-tube warm glass), drawn by the firmware and mirrored pixel-for-pixel by the built-in
+web console's renderer:
+
+| | |
+|:---:|:---:|
+| ![Nixie clock](images/screenshots/clock-nixie.png)<br>**Nixie clock** | ![Date](images/screenshots/date-nixie.png)<br>**Date** |
+| ![Scrolling marquee](images/screenshots/marquee-nixie.png)<br>**Scrolling marquee** | ![Big clock](images/screenshots/bigclock-nixie.png)<br>**Big clock** |
+| ![Countdown](images/screenshots/countdown-nixie.png)<br>**Countdown timer** | ![Calendar](images/screenshots/calendar.png)<br>**Month calendar** |
+
 ## Status: complete & working ✅
 
 - **Hardware:** SI HAI IPS Clock — ESP32-WROOM-32D (16 MB), 6× ST7789 135×240 IPS panels on a
