@@ -404,54 +404,86 @@ static const MenuEntry MENU[] = {
     {"TEST", M_TEST}, {"FPS", M_FPS}, {"BOOT", M_BOOT}, {"EXIT", M_EXIT} };
 static const int MENU_N = (int)(sizeof(MENU) / sizeof(MENU[0]));
 
+// ---- Text menu rendering (TFT built-in font via Tubes::drawText — NOT nixie plates) ----
+// Writing WORDS on the panels makes "you're in a menu" unmistakable (plain text vs the
+// nixie clock) and readable — a whole label lives on one tube. Layout is left-to-right
+// across the LIVE tubes; the nixie renderer numbers tubes right-to-left (see layoutLeft),
+// so visually-left = highest index. A tiny per-tube cache avoids repainting unchanged panels.
+static String g_menuCell[TUBE_COUNT];   // last text drawn per tube while in the menu
+static int liveTubesLR(uint8_t out[TUBE_COUNT]) {
+    int n = 0;
+    for (int i = TUBE_COUNT - 1; i >= 0; --i) if (Tubes::alive((uint8_t)i)) out[n++] = (uint8_t)i;
+    return n;
+}
+static void menuCellReset() { for (auto& s : g_menuCell) s = String((char)1); }  // sentinel -> force full repaint
+static void menuPut(uint8_t tube, const String& s) {
+    if (g_menuCell[tube] == s) return;             // unchanged panel — skip the SPI paint
+    Tubes::drawText(tube, s);
+    g_menuCell[tube] = s;
+}
+// Browsing the list: a scrolling window, current item on the left with a ">" cursor.
 static void drawMenu() {
-    char out[TUBE_COUNT]; layoutLeft(MENU[g_menuIdx].label, 0, out);
-    showChars(out, true);
+    uint8_t lr[TUBE_COUNT]; int nlive = liveTubesLR(lr);
+    for (int p = 0; p < nlive; ++p) {
+        int mi = (g_menuIdx + p) % MENU_N;
+        String s = (p == 0 ? ">" : " "); s += MENU[mi].label;
+        menuPut(lr[p], s);
+    }
     Serial.printf("[menu] item=%s\n", MENU[g_menuIdx].label);
 }
 static void openMenu() {
     g_menuOpen = true; g_menuIdx = 0; g_menuEdit = -1;
     g_mode = Mode::Manual;         // stop the clock repainting under the menu
-    Tubes::setNixieFadeSteps(2); forceRedraw(); drawMenu();
+    menuCellReset(); drawMenu();
     Serial.println("[menu] open (UP/DOWN move · MODE select · POWER back) — items:");
     for (int i = 0; i < MENU_N; ++i) Serial.printf("[menu]   %d %s\n", i, MENU[i].label);
 }
 static void closeMenu(bool toClock = true) {
     g_menuOpen = false; g_menuEdit = -1;
-    if (toClock) setMode(Mode::Clock);   // restores the 4-frame fade too
+    if (toClock) { setMode(Mode::Clock); forceRedraw(); }   // wipe the text cells; nixie clock fully repaints
     Serial.println("[control] menu close");
 }
 static void menuNav(int dir) { g_menuIdx = (g_menuIdx + dir + MENU_N) % MENU_N; drawMenu(); }
 
-// ---- In-place item editor: select an item to STAY in it and navigate its options ----
-// (MODE used to fire a one-shot and drop out of the menu; you couldn't scroll faces.)
-static void menuShowLabel(const char* s) { char out[TUBE_COUNT]; layoutLeft(s, 0, out); showChars(out, true); }
-static void menuShowFps() { char b[16]; snprintf(b, sizeof b, "%d FPS", (int)(Esp1::stats().fps + 0.5f)); menuShowLabel(b); }
-// FACE navigates by NAME — a clear menu label. (Applying the preset live made "editing FACE" look
-// identical to a closed menu, so MODE felt like it just exited.) UP/DOWN scroll the name; MODE applies.
+// ---- In-place item editor: "LABEL > VALUE" written across the tubes. STAY in the item;
+// UP/DOWN change VALUE, MODE confirms (+applies), POWER cancels — both step back to the list.
 static const char* faceShort(uint8_t p) {
-    switch (p) { case 0: return "NIXIE"; case 1: return "DIGITL"; case 2: return "LEDSHW"; case 4: return "DATE"; default: return "OFF"; }
+    switch (p) { case 0: return "NIXIE"; case 1: return "DIGITAL"; case 2: return "LEDSHOW"; case 4: return "DATE"; default: return "OFF"; }
+}
+static String menuEditValue(int action) {
+    switch (action) {
+        case M_FACE: return faceShort((uint8_t)g_faceSel);
+        case M_LED:  return effectName();
+        case M_FPS:  { char b[12]; snprintf(b, sizeof b, "%dFPS", (int)(Esp1::stats().fps + 0.5f)); return String(b); }
+    }
+    return String();
+}
+static void menuDrawEdit(int action) {
+    uint8_t lr[TUBE_COUNT]; int nlive = liveTubesLR(lr);
+    int p = 0;
+    if (p < nlive) menuPut(lr[p++], MENU[g_menuIdx].label);   // e.g. "FACE"
+    if (p < nlive) menuPut(lr[p++], ">");
+    if (p < nlive) menuPut(lr[p++], menuEditValue(action));   // e.g. "NIXIE"
+    for (; p < nlive; ++p) menuPut(lr[p], "");                // blank the rest
 }
 static void menuEditEnter(int action) {
     g_menuEdit = action;
+    if (action == M_FACE) g_faceSel = g_preset;               // start from the current face; applied on MODE
     Serial.printf("[menu] enter %s\n", MENU[g_menuIdx].label);
-    switch (action) {
-        case M_FACE: g_faceSel = g_preset; menuShowLabel(faceShort((uint8_t)g_faceSel)); break;   // NAME label; not applied until MODE
-        case M_LED:  break;                                                                       // keep the "LED" label; the underglow is the feedback
-        case M_FPS:  menuShowFps(); break;
-    }
+    menuDrawEdit(action);
 }
 static void menuEditStep(int dir) {
     switch (g_menuEdit) {
-        case M_FACE: g_faceSel = (g_faceSel + dir + PRESET_N) % PRESET_N; menuShowLabel(faceShort((uint8_t)g_faceSel)); break;
-        case M_LED:  cycleEffect(); break;                                                        // forward-only; UP and DOWN both advance the glow
-        case M_FPS:  menuShowFps(); break;                                                        // refresh the live reading
+        case M_FACE: g_faceSel = (g_faceSel + dir + PRESET_N) % PRESET_N; break;
+        case M_LED:  cycleEffect(); break;                                          // forward-only; UP and DOWN both advance the glow
+        case M_FPS:  break;                                                         // read-only; redraw refreshes the live reading
     }
+    menuDrawEdit(g_menuEdit);
 }
-static void menuEditExit(bool apply) {                                                            // MODE = confirm+apply, POWER = cancel; both step back to the list
-    if (apply && g_menuEdit == M_FACE) applyPreset((uint8_t)g_faceSel, true);   // persist the chosen face (and its preset-default effect)
+static void menuEditExit(bool apply) {                                              // MODE = confirm+apply, POWER = cancel; both step back to the list
+    if (apply && g_menuEdit == M_FACE) applyPreset((uint8_t)g_faceSel, true);       // persist the chosen face (and its preset-default effect)
     // LED persisted itself via cycleEffect(); FPS is read-only
-    g_menuEdit = -1; g_mode = Mode::Manual; Tubes::setNixieFadeSteps(2); forceRedraw(); drawMenu();
+    g_menuEdit = -1; g_mode = Mode::Manual; drawMenu();
 }
 
 static void menuSelect() {
