@@ -78,6 +78,11 @@ void drawGlyphNixie(uint8_t i, char c);   // one tube, one glyph, no fade
 // Cross-fade n tubes at once (frame-major, so they change together). from[j]
 // is the glyph currently shown (0 = unlit plate), to[j] the new one.
 void drawGlyphsNixieFade(const uint8_t* idx, const char* from, const char* to, uint8_t n);
+// Smooth motion (baked plates, on-device). HShift: this tube shows a 135-px window —
+// the right of cL (from column fx) then the left of cR — for a horizontal marquee.
+// VShift: cCur slides down by dy (0..239) while cNext enters from the top.
+void drawTubeHShift(uint8_t i, char cL, char cR, uint16_t fx);
+void drawTubeVShift(uint8_t i, char cCur, char cNext, uint16_t dy);
 uint32_t lastDrawUs();                    // duration of the last nixie draw/fade
 void fill(uint8_t i, uint16_t color565);
 void clearAll();

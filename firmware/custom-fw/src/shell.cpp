@@ -187,9 +187,9 @@ void exec(const String& raw, Print& o) {
                  Esp1::tcpConnected() ? "true" : "false", s.fps, (unsigned)s.kbps, (unsigned)s.frames, (unsigned)s.bad);
     }
     else if (cmd == "preset") { if (arg == "next") Control::nextPreset(); else if (!Control::setPresetByIndex(arg.toInt())) { o.println("ERR bad preset"); return; } o.printf("OK preset %s\n", Control::presetName(Control::preset())); }
-    else if (cmd == "nixie" || cmd == "flash" || cmd == "scroll") {
+    else if (cmd == "nixie" || cmd == "flash" || cmd == "scroll" || cmd == "scrollstep" || cmd == "vscroll" || cmd == "vpage") {
         const char* eff = cmd == "nixie" ? "static" : cmd.c_str();
-        if (!arg.length() || !Control::nixieText(arg.c_str(), eff, 400)) { o.println("ERR usage: nixie|flash|scroll <text>"); return; }
+        if (!arg.length() || !Control::nixieText(arg.c_str(), eff, 400)) { o.println("ERR usage: nixie|flash|scroll|scrollstep|vscroll|vpage <text>"); return; }
         o.printf("OK %s\n", eff);
     }
     else if (cmd == "countdown") { long s = arg.toInt(); if (s <= 0) { o.println("ERR seconds"); return; } Control::nixieCountdown((uint32_t)s); o.println("OK countdown"); }

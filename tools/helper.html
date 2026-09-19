@@ -2314,13 +2314,16 @@ function pingpong(t,speed){ const ph=(t*(speed/50))%2; return (ph<1?ph:2-ph)*100
 
 const ANIMS={
   marquee:{ name:'🏃 Marquee (scrolling text)', kind:'span',
-    desc:'Text/emoji scrolling right→left across the whole clock.',
+    desc:'Text scrolling across the clock. ⚡ Native = the clock scrolls it itself from baked nixie glyphs (zero pixels); Direction sets horizontal / vertical slide / vertical pages. 🎨 Pixels streams your chosen font/colour.',
     params:[ {k:'text',label:'Text',type:'text',def:'ESPTUBE  ★  '},
-      {k:'size',label:'Size',type:'range',min:40,max:240,def:170},
+      {k:'output',label:'Output',type:'select',options:[['native','⚡ Native nixie'],['pixels','🎨 Pixels']],def:'native'},
+      {k:'dir',label:'Direction (native)',type:'select',options:[['scroll','→ Horizontal'],['vscroll','↓ Vertical slide'],['vpage','⇊ Vertical pages'],['scrollstep','→ Step (legacy)']],def:'scroll'},
+      {k:'size',label:'Size (pixels)',type:'range',min:40,max:240,def:170},
       {k:'speed',label:'Speed px/s',type:'range',min:10,max:320,def:90},
-      {k:'font',label:'Font',type:'font',def:'display'},
-      {k:'color',label:'Color',type:'color',def:'#ffb454'},
-      {k:'bg',label:'Background',type:'color',def:'#000000'} ],
+      {k:'font',label:'Font (pixels)',type:'font',def:'display'},
+      {k:'color',label:'Color (pixels)',type:'color',def:'#ffb454'},
+      {k:'bg',label:'Background (pixels)',type:'color',def:'#000000'} ],
+    native(p){ return {effect:p.dir||'scroll', text:fmtNative(p.text), ms:speedToMs(p.speed)}; },
     draw(g,W,H,t,p){ const txt=p.text||'';
       if(p.font==='nixie'){                                   // real nixie: per-tube glass + ghost + bloom
         nixieSpanGlass(g,W,H,p.bg); const col=nixieColor(p.color), wt=nixieWeight();
@@ -2332,28 +2335,31 @@ const ANIMS={
       const gap=Math.max(40,p.size*0.6), pw=tw+gap; let x=-((t*p.speed)%pw); for(;x<W;x+=pw) g.fillText(txt,x,H/2); } },
 
   bigclock:{ name:'🕐 Big clock / countdown / timer / epoch', kind:'span',
-    desc:'Large time across all tubes. Clock · Countdown (to HH:MM or a Unix ts) · Count up (from a Unix ts) · Stopwatch · Timer (secs) · Live Unix epoch.',
+    desc:'Time across all tubes. ⚡ Native: Clock uses the built-in nixie clock face; the timers/epoch send the current string as it changes (≈1/s, zero pixels). 🎨 Pixels streams big digits.',
     params:[ {k:'mode',label:'Mode',type:'select',options:[['clock','Clock'],['countdown','Countdown'],['countup','Count up'],['stopwatch','Stopwatch'],['timer','Timer'],['epoch','Live Unix epoch']],def:'clock'},
+      {k:'output',label:'Output',type:'select',options:[['native','⚡ Native nixie'],['pixels','🎨 Pixels']],def:'native'},
       {k:'target',label:'Target (HH:MM / secs)',type:'text',def:''},
       {k:'unix',label:'Unix ts (countdown/up)',type:'text',def:''},
       {k:'showSecs',label:'Show seconds',type:'bool',def:true},
-      {k:'size',label:'Size',type:'range',min:80,max:280,def:230},
-      {k:'font',label:'Font',type:'select',options:[['mono','Mono'],['display','Display'],['sans','Sans'],['serif','Serif'],['nixie','Nixie glow']],def:'mono'},
-      {k:'color',label:'Color',type:'color',def:'#ffb454'},
-      {k:'bg',label:'Background',type:'color',def:'#000000'} ],
-    draw(g,W,H,t,p,st){ const p2=n=>String(Math.floor(n)).padStart(2,'0'); const now=new Date(); let str='';
-      const el0=t-(st.bornT||0); const nowS=Date.now()/1000;
-      if(p.mode==='clock'){ str=p2(now.getHours())+':'+p2(now.getMinutes())+(p.showSecs?':'+p2(now.getSeconds()):''); }
-      else if(p.mode==='epoch'){ str=String(Math.floor(nowS)); }
-      else if(p.mode==='stopwatch'){ str=fmtDurFull(Math.max(0,el0)); }
-      else if(p.mode==='timer'){ const dur=parseFloat(p.target)||60; const rem=Math.max(0,dur-el0); str=fmtDurFull(rem); if(rem<=0 && Math.floor(t*2)%2){ g.fillStyle='#ff3b3b'; g.fillRect(0,0,W,H); } }
-      else if(p.mode==='countup'){ const pu=parseUnix(p.unix); str = pu.valid ? fmtDurFull(nowS-pu.sec) : 'bad ts'; }
-      else { // countdown: prefer a valid Unix ts, else HH:MM (today/next day)
-        const pu=parseUnix(p.unix); let rem=0;
-        if((p.unix||'').trim()){ if(!pu.valid){ str='bad ts'; drawSpanLine(g,W,H,str,'#ff6b6b',p.bg,p.font,p.size); return; } rem=pu.sec-nowS; }
-        else { const m=String(p.target||'').match(/(\d{1,2}):(\d{2})/); if(m){ const tgt=new Date(now); tgt.setHours(+m[1],+m[2],0,0); if(tgt<now) tgt.setDate(tgt.getDate()+1); rem=(tgt-now)/1000; } }
-        str=fmtDurFull(Math.max(0,rem)); }
-      drawSpanLine(g,W,H,str,p.color,p.bg,p.font,p.size); } },
+      {k:'size',label:'Size (pixels)',type:'range',min:80,max:280,def:230},
+      {k:'font',label:'Font (pixels)',type:'select',options:[['mono','Mono'],['display','Display'],['sans','Sans'],['serif','Serif'],['nixie','Nixie glow']],def:'mono'},
+      {k:'color',label:'Color (pixels)',type:'color',def:'#ffb454'},
+      {k:'bg',label:'Background (pixels)',type:'color',def:'#000000'} ],
+    str(p,st,t){ const p2=n=>String(Math.floor(n)).padStart(2,'0'); const now=new Date(); const el0=t-(st.bornT||0), nowS=Date.now()/1000;
+      if(p.mode==='clock')     return p2(now.getHours())+':'+p2(now.getMinutes())+(p.showSecs?':'+p2(now.getSeconds()):'');
+      if(p.mode==='epoch')     return String(Math.floor(nowS));
+      if(p.mode==='stopwatch') return fmtDurFull(Math.max(0,el0));
+      if(p.mode==='timer')     { const dur=parseFloat(p.target)||60; return fmtDurFull(Math.max(0,dur-el0)); }
+      if(p.mode==='countup')   { const pu=parseUnix(p.unix); return pu.valid?fmtDurFull(nowS-pu.sec):'bad ts'; }
+      const pu=parseUnix(p.unix); let rem=0;                                   // countdown
+      if((p.unix||'').trim()){ if(!pu.valid) return 'bad ts'; rem=pu.sec-nowS; }
+      else { const m=String(p.target||'').match(/(\d{1,2}):(\d{2})/); if(m){ const tgt=new Date(now); tgt.setHours(+m[1],+m[2],0,0); if(tgt<now) tgt.setDate(tgt.getDate()+1); rem=(tgt-now)/1000; } }
+      return fmtDurFull(Math.max(0,rem)); },
+    native(p,st){ if(p.mode==='clock') return {preset:0};
+      const s=this.str(p,st,(performance.now()-engine.t0)/1000); return s==='bad ts'?null:{effect:'static',text:fmtNative(s)}; },
+    draw(g,W,H,t,p,st){ const s=this.str(p,st,t); let bg=p.bg;
+      if(p.mode==='timer'){ const el0=t-(st.bornT||0), dur=parseFloat(p.target)||60; if(dur-el0<=0 && Math.floor(t*2)%2) bg='#ff3b3b'; }
+      drawSpanLine(g,W,H,s,(s==='bad ts'?'#ff6b6b':p.color),bg,p.font,p.size); } },
 
   calendar:{ name:'📅 Calendar (month grid)', kind:'span',
     desc:'The current month as a grid across all tubes, with today highlighted.',
@@ -2436,9 +2442,14 @@ const ANIMS={
       {k:'url',label:'JSON URL',type:'text',def:''},
       {k:'field',label:'Field path',type:'text',def:''},
       {k:'label',label:'Label',type:'text',def:''},
+      {k:'output',label:'Output',type:'select',options:[['native','⚡ Native nixie scroll'],['pixels','🎨 Big number']],def:'native'},
       {k:'refresh',label:'Refresh (s)',type:'range',min:10,max:600,def:60},
-      {k:'color',label:'Color',type:'color',def:'#ffffff'},
-      {k:'bg',label:'Background',type:'color',def:'#0b1220'} ],
+      {k:'color',label:'Color (pixels)',type:'color',def:'#ffffff'},
+      {k:'bg',label:'Background (pixels)',type:'color',def:'#0b1220'} ],
+    native(p,st){ if(!st||st.value==null) return null;
+      const val=Math.round(st.value*100)/100, up=(st.change||0)>=0;
+      const chg=(up?'+':'-')+Math.abs(Math.round((st.change||0)*100)/100)+(st.changeIsPct?'%':'');
+      return {effect:'scroll', text:fmtNative([st.label||'',val,chg,st.unit||''].join(' ')), ms:900}; },
     async poll(p,st){ st.err=''; try{
       if(p.source==='crypto'){ const r=await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(p.cryptoId)}&vs_currencies=${encodeURIComponent(p.cryptoCur)}&include_24hr_change=true`);
         const j=await r.json(); const row=j[p.cryptoId.toLowerCase()]; if(!row) throw new Error('coin not found');
@@ -2468,12 +2479,14 @@ const ANIMS={
     desc:'Scrolling headlines via rss2json (any RSS feed URL; no key needed, optional key for higher limits). Clear message if blocked.',
     params:[ {k:'feedUrl',label:'RSS feed URL',type:'text',def:'https://feeds.bbci.co.uk/news/world/rss.xml'},
       {k:'apiKey',label:'rss2json key (optional)',type:'text',def:''},
+      {k:'output',label:'Output',type:'select',options:[['native','⚡ Native nixie'],['pixels','🎨 Pixels']],def:'native'},
       {k:'refresh',label:'Refresh (s)',type:'range',min:30,max:1800,def:300},
-      {k:'size',label:'Size',type:'range',min:40,max:220,def:150},
+      {k:'size',label:'Size (pixels)',type:'range',min:40,max:220,def:150},
       {k:'speed',label:'Speed px/s',type:'range',min:10,max:300,def:80},
-      {k:'font',label:'Font',type:'font',def:'display'},
-      {k:'color',label:'Color',type:'color',def:'#ffd166'},
-      {k:'bg',label:'Background',type:'color',def:'#0b1020'} ],
+      {k:'font',label:'Font (pixels)',type:'font',def:'display'},
+      {k:'color',label:'Color (pixels)',type:'color',def:'#ffd166'},
+      {k:'bg',label:'Background (pixels)',type:'color',def:'#0b1020'} ],
+    native(p,st){ return st&&st.text ? {effect:'scroll', text:fmtNative(st.text), ms:speedToMs(p.speed)} : null; },
     async poll(p,st){ st.err=''; try{
       const feed=(p.feedUrl||'').trim(); if(!feed) throw new Error('set a feed URL');
       const nk=p.apiKey||apiKeys.rss2json;
@@ -2556,9 +2569,11 @@ const ANIMS={
   alert:{ name:'🚨 Alert flash', kind:'span',
     desc:'Blink a message + LEDs for notifications.',
     params:[ {k:'text',label:'Text',type:'text',def:'⚠ ALERT'},{k:'rate',label:'Flashes/s',type:'range',min:0.5,max:8,step:0.5,def:2},
-      {k:'colorA',label:'Flash color',type:'color',def:'#ff3b3b'},{k:'colorB',label:'Off color',type:'color',def:'#000000'},
-      {k:'textColor',label:'Text color',type:'color',def:'#ffffff'},{k:'size',label:'Size',type:'range',min:60,max:220,def:130},
-      {k:'font',label:'Font',type:'font',def:'display'} ],
+      {k:'output',label:'Output',type:'select',options:[['native','⚡ Native nixie flash'],['pixels','🎨 Pixels + LEDs']],def:'native'},
+      {k:'colorA',label:'Flash color (pixels)',type:'color',def:'#ff3b3b'},{k:'colorB',label:'Off color (pixels)',type:'color',def:'#000000'},
+      {k:'textColor',label:'Text color (pixels)',type:'color',def:'#ffffff'},{k:'size',label:'Size (pixels)',type:'range',min:60,max:220,def:130},
+      {k:'font',label:'Font (pixels)',type:'font',def:'display'} ],
+    native(p){ return {effect:'flash', text:fmtNative(p.text), ms:Math.round(1000/(2*Math.max(0.5,p.rate)))}; },
     draw(g,W,H,t,p){ const on=Math.floor(t*p.rate)%2===0; g.fillStyle=on?p.colorA:p.colorB; g.fillRect(0,0,W,H);
       if(on) drawSpanLine(g,W,H,p.text||'',p.textColor,null,p.font,p.size); },
     led(t,p,k,n){ const on=Math.floor(t*p.rate)%2===0; return on?hexToRgb(p.colorA):{r:0,g:0,b:0}; } }
@@ -2574,6 +2589,7 @@ function paramsFromSpec(spec){ const o={}; spec.forEach(f=>o[f.k]=f.def); return
 function selectAnim(id){ engine.animId=id; const a=ANIMS[id];
   engine.params=engine.saved[id]?Object.assign(paramsFromSpec(a.params),engine.saved[id]):paramsFromSpec(a.params);
   engine.saved[id]=engine.params; engine.runState={ bornT:(performance.now()-engine.t0)/1000 };
+  engine.lastNativeCmd=null;                                  // new effect: re-send its native command
   if(a.init) try{ a.init(engine.params,engine.runState); }catch(e){}
   buildParamsForm(); $('#animDesc').textContent=a.desc||''; startPoller(); autosave(); }
 
@@ -2624,23 +2640,59 @@ async function pushCurrentFrame(){ const a=currentAnim(), list=engine.curList||p
     if(j.led){ try{ await pushGlowRgb(j.idx,j.led); }catch(e){ failed++; } } }
   engine.failed=failed; updateEngStat(); }
 
+/* ---- Native nixie output: stream TEXT, not pixels. The clock renders + scrolls
+   from its baked glyph plates; we only (re)POST when the command actually changes
+   (the buffer cache), then it animates on-device forever at ~0 bandwidth. ---- */
+const NIXIE_CH=/[0-9A-Z\-:.!?%+/° ]/;                 // the device glyph set (uppercased)
+function fmtNative(s){
+  s=String(s==null?'':s).toUpperCase()
+    .replace(/[▲△⬆]/g,'+').replace(/[▼▽⬇]/g,'-')       // arrows -> signs the tubes can draw
+    .replace(/[•·|]/g,' - ').replace(/[–—]/g,'-');     // bullets/dashes -> ASCII
+  let o=''; for(const ch of s) o += NIXIE_CH.test(ch) ? ch : (/\s/.test(ch)?' ':'');
+  return o.replace(/\s+/g,' ').trim().slice(0,255);
+}
+const speedToMs=px=>Math.max(60,Math.min(5000,Math.round(135000/Math.max(5,px||90))));  // px/s -> ms per glyph-width
+function nativeActive(){ const a=currentAnim(); return !!(a&&a.native&&(engine.params.output||'native')==='native'); }
+async function sendNative(cmd){
+  if(!cmd) return;
+  if(cmd.preset!=null) return postBare('/preset/'+(cmd.preset|0));
+  if(cmd.countdown!=null) return postJson('/nixie/countdown',{seconds:Math.max(1,cmd.countdown|0)});
+  return postJson('/nixie/text',{text:String(cmd.text||''),effect:cmd.effect||'static',ms:+cmd.ms||500});
+}
+async function pushCurrentNative(){
+  const a=currentAnim(); if(!a||!a.native) return;
+  let cmd=null; try{ cmd=a.native(engine.params,engine.runState); }catch(e){}
+  const key=cmd?JSON.stringify(cmd):null;
+  if(key && key!==engine.lastNativeCmd){                 // only when the content changed
+    engine.lastNativeCmd=key; engine.lastNativeSent=true;
+    try{ await sendNative(cmd); pushStats.frames++; }catch(e){ engine.failed++; }
+    updateEngStat();
+  }
+}
+
 /* self-paced loop (setTimeout, not rAF): keeps pushing to the clock even when
    the tab is backgrounded; idles the preview when hidden to save CPU. */
 function scheduleFrame(){ clearTimeout(engine.timer);
-  const delay = engine.pushing ? Math.max(30,1000/engine.fps) : (document.hidden?600:66);
+  // native output only re-sends on change, so keep the preview cadence; pixel pushing paces to fps.
+  const delay = (engine.pushing && !nativeActive()) ? Math.max(30,1000/engine.fps) : (document.hidden?600:66);
   engine.timer=setTimeout(frameLoop,delay); }
 async function frameLoop(){
   const t=(performance.now()-engine.t0)/1000;
-  try{ drawCurrentFrame(t); }catch(e){}   // always refresh the on-screen preview
-  if(engine.pushing && !engine.busy){ engine.busy=true; try{ await pushCurrentFrame(); }catch(e){} engine.busy=false; }
+  try{ drawCurrentFrame(t); }catch(e){}   // always refresh the on-screen preview (browser nixie approximation)
+  if(engine.pushing && !engine.busy){ engine.busy=true;
+    try{ if(nativeActive()) await pushCurrentNative(); else await pushCurrentFrame(); }catch(e){} engine.busy=false; }
   scheduleFrame(); }
 function updateEngStat(){ const d=$('#engDot'), s=$('#engStat');
   if(engine.pushing){ d.className=engine.failed?'dot warn':'dot on';
-    const kb=Math.round(pushStats.bytes/1024); s.textContent='pushing · '+pushStats.rects+' blits · '+pushStats.frames+' frames · '+pushStats.skipped+' skipped · '+kb+' KB'+(engine.failed?' · ⚠ '+engine.failed+' failed':''); }
+    if(nativeActive()){ s.textContent='native ⚡ · the clock renders it · '+(pushStats.frames||0)+' sent · 0 pixels'+(engine.failed?' · ⚠ '+engine.failed+' failed':''); }
+    else { const kb=Math.round(pushStats.bytes/1024); s.textContent='pushing · '+pushStats.rects+' blits · '+pushStats.frames+' frames · '+pushStats.skipped+' skipped · '+kb+' KB'+(engine.failed?' · ⚠ '+engine.failed+' failed':''); } }
   else { d.className='dot'; s.textContent='preview only'; } }
 function startPushing(){ if(state.paused){ toast('⏸ Paused — ▶ resume first','bad'); return; }
-  setHandsOff(false); engine.pushing=true; engine.failed=0; Object.assign(pushStats,{frames:0,rects:0,skipped:0,bytes:0}); updateEngStat(); scheduleFrame(); toast('Animation pushing — '+currentAnim().name,'ok'); }
-function stopPushing(){ engine.pushing=false; updateEngStat(); }
+  setHandsOff(false); engine.pushing=true; engine.failed=0; engine.lastNativeCmd=null; Object.assign(pushStats,{frames:0,rects:0,skipped:0,bytes:0}); updateEngStat(); scheduleFrame();
+  toast((nativeActive()?'Native nixie — ':'Animation pushing — ')+currentAnim().name,'ok'); }
+function stopPushing(){ engine.pushing=false;
+  if(engine.lastNativeSent){ engine.lastNativeSent=false; engine.lastNativeCmd=null; act(postBare('/nixie/stop')); }  // native → hand back to the clock
+  updateEngStat(); }
 
 /* transitions into the current scene (per-tube or spanning) */
 async function buildSceneTargets(){ const list=populatedList(), targets={};

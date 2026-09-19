@@ -78,11 +78,17 @@ bool timeValid();   // true once NTP has produced a plausible year (>2020)
 void forceClockRedraw();
 
 // ---- Device-native nixie messages (Mode::Nixie) — zero pixels pushed ----
-// text: UTF-8 (A-Z 0-9 and - : . ! ? ° % + /; others blank). effect: "static" |
-// "flash" (on/off every ms) | "scroll" (marquee, one glyph step every ms).
-// countdown: HHMMSS / MMSS positional like the clock, flashes 0000 at the end,
-// then returns to the clock. nixieStop() returns to the clock immediately.
-enum class NixieKind { Static, Flash, Scroll, Countdown };
+// text: UTF-8 (A-Z 0-9 and - : . ! ? ° % + /; others blank). effect strings:
+//   "static"                 — the message, left-aligned, held.
+//   "flash"                  — on/off every ms.
+//   "scroll"                 — SMOOTH horizontal marquee (sub-glyph pixel motion).
+//   "scrollstep"             — legacy one-glyph-per-step scroll (cheapest).
+//   "vscroll"                — SMOOTH vertical marquee: hyphenated lines slide DOWN.
+//   "vpage" / "vflip"        — vertical marquee by page-flip (cross-fade per line).
+// `ms` is the motion rate (glyph-width period for scroll, line dwell for vpage).
+// countdown: HHMMSS / MMSS positional; flashes 0000 at the end, returns to clock.
+// nixieStop() returns to the clock immediately.
+enum class NixieKind { Static, Flash, Scroll, Marquee, VScroll, VPage, Countdown };
 bool nixieText(const char* utf8, const char* effect, uint32_t ms);
 void nixieCountdown(uint32_t seconds);
 void nixieStop();

@@ -631,14 +631,49 @@ static int populatedCount() { int n = 0; for (uint8_t i = 0; i < TUBE_COUNT; ++i
 // ---- Nixie message engine (Mode::Nixie) ----------------------------------------
 static struct {
     NixieKind kind = NixieKind::Static;
-    char      text[96] = {0};
+    char      text[256] = {0};      // room for news/ticker strings (was 96)
     uint32_t  ms = 500, nextAt = 0, endAtMs = 0;
-    int       pos = 0;              // scroll offset
+    int       pos = 0;              // legacy Scroll: glyph-step offset
+    int32_t   px = 0;              // Marquee: horizontal pixel offset into the strip
+    int       line = 0;            // VScroll/VPage: current line index
+    int       dy = 0;             // VScroll: vertical slide 0..PANEL_H
+    uint32_t  lastStep = 0;        // time-based motion advance
     bool      on = true;            // flash phase
     int32_t   lastRem = -1;         // countdown: last rendered remaining seconds
     uint8_t   doneFlashes = 0;      // countdown: end-of-count flashes emitted
     bool      dirty = true;         // (re)render on next tick
 } g_nx;
+
+// Vertical marquee: text pre-broken into ≤N-glyph lines, hyphenating words longer
+// than the live-tube count. Rebuilt whenever a vscroll/vpage message is set.
+static const int  VLINE_MAX = 48;
+static char       g_vlines[VLINE_MAX][TUBE_COUNT + 1];
+static int        g_vnlines = 0;
+static void nixieBuildLines(const char* s, int N) {
+    if (N < 2) N = 2; if (N > TUBE_COUNT) N = TUBE_COUNT;
+    g_vnlines = 0;
+    char line[TUBE_COUNT + 1]; int ll = 0;
+    auto emit = [&]() { if (g_vnlines < VLINE_MAX) { line[ll] = 0; memcpy(g_vlines[g_vnlines], line, ll + 1); g_vnlines++; } ll = 0; };
+    const int len = (int)strlen(s); int i = 0;
+    while (i < len) {
+        while (i < len && s[i] == ' ') i++;                       // skip runs of spaces at a line break
+        if (i >= len) break;
+        int j = i; while (j < len && s[j] != ' ') j++;            // one word
+        int wlen = j - i;
+        if (wlen <= N) {
+            if (ll == 0)                     { for (int k = 0; k < wlen; k++) line[ll++] = s[i + k]; }
+            else if (ll + 1 + wlen <= N)     { line[ll++] = ' '; for (int k = 0; k < wlen; k++) line[ll++] = s[i + k]; }
+            else                             { emit(); for (int k = 0; k < wlen; k++) line[ll++] = s[i + k]; }
+            i = j;
+        } else {                                                  // word longer than a line: hyphenate
+            if (ll > 0) emit();
+            while (wlen > N) { for (int k = 0; k < N - 1; k++) line[ll++] = s[i + k]; line[ll++] = '-'; emit(); i += N - 1; wlen -= N - 1; }
+            for (int k = 0; k < wlen; k++) line[ll++] = s[i + k]; i += wlen;
+        }
+    }
+    if (ll > 0) emit();
+    if (g_vnlines == 0) { g_vlines[0][0] = 0; g_vnlines = 1; }
+}
 
 // UTF-8 -> glyph chars: fold case, '°' -> NIXIE_CH_DEGREE, drop other multi-byte.
 static void sanitizeNixie(const char* in, char* out, size_t cap) {
@@ -657,16 +692,22 @@ static void sanitizeNixie(const char* in, char* out, size_t cap) {
 bool nixieText(const char* utf8, const char* effect, uint32_t ms) {
     NixieKind k;
     if (!effect || !*effect || !strcmp(effect, "static")) k = NixieKind::Static;
-    else if (!strcmp(effect, "flash"))  k = NixieKind::Flash;
-    else if (!strcmp(effect, "scroll")) k = NixieKind::Scroll;
+    else if (!strcmp(effect, "flash"))                    k = NixieKind::Flash;
+    else if (!strcmp(effect, "scroll"))                   k = NixieKind::Marquee;      // smooth horizontal (new default)
+    else if (!strcmp(effect, "scrollstep"))               k = NixieKind::Scroll;       // legacy one-glyph-per-step
+    else if (!strcmp(effect, "vscroll"))                  k = NixieKind::VScroll;      // smooth vertical, hyphenated
+    else if (!strcmp(effect, "vpage") || !strcmp(effect, "vflip")) k = NixieKind::VPage; // vertical page-flip
     else return false;
     sanitizeNixie(utf8 ? utf8 : "", g_nx.text, sizeof g_nx.text);
     g_dateFace = false;           // an explicit message replaces the preset-4 date face
     g_nx.kind = k; g_nx.ms = ms < 60 ? 60 : ms; g_nx.pos = -populatedCount(); g_nx.on = true;
+    g_nx.px = 0; g_nx.line = 0; g_nx.dy = 0; g_nx.lastStep = millis();
     g_nx.nextAt = millis() + g_nx.ms; g_nx.dirty = true;
-    // A flash/scroll step re-fades every tube (~26 ms × frames × tubes), so a brisk
-    // pace gets 2 frames instead of 4; the clock face gets its 4 back on exit.
-    Tubes::setNixieFadeSteps((k != NixieKind::Static && g_nx.ms < 600) ? 2 : 4);
+    if (k == NixieKind::VScroll || k == NixieKind::VPage) nixieBuildLines(g_nx.text, populatedCount());
+    // A flash/step re-fades every tube (~26 ms × frames × tubes), so a brisk pace gets
+    // 2 frames instead of 4; the clock face gets its 4 back on exit. Smooth marquees
+    // recompose per step (no fade), so fade steps don't apply to them.
+    Tubes::setNixieFadeSteps((k == NixieKind::Flash || k == NixieKind::Scroll || k == NixieKind::VPage) && g_nx.ms < 600 ? 2 : 4);
     g_mode = Mode::Nixie; g_lastNonOff = Mode::Nixie; forceRedraw();
     Serial.printf("[nixie] %s \"%s\" ms=%u\n", effect ? effect : "static", g_nx.text, (unsigned)g_nx.ms);
     return true;
@@ -682,8 +723,15 @@ void nixieCountdown(uint32_t seconds) {
 void nixieStop() { if (g_mode == Mode::Nixie) setMode(Mode::Clock); }
 // (setMode(Clock) restores the 4-frame fade — see below.)
 const char* nixieKindName() {
-    switch (g_nx.kind) { case NixieKind::Flash: return "flash"; case NixieKind::Scroll: return "scroll";
-                         case NixieKind::Countdown: return "countdown"; default: return "static"; }
+    switch (g_nx.kind) {
+        case NixieKind::Flash:     return "flash";
+        case NixieKind::Scroll:    return "scrollstep";
+        case NixieKind::Marquee:   return "scroll";
+        case NixieKind::VScroll:   return "vscroll";
+        case NixieKind::VPage:     return "vpage";
+        case NixieKind::Countdown: return "countdown";
+        default:                   return "static";
+    }
 }
 const char* nixieMessage() { return g_nx.text; }
 uint32_t    nixieMs()      { return g_nx.ms; }
@@ -717,6 +765,44 @@ static void nixieTick() {
             const int len = (int)strlen(g_nx.text), n = populatedCount();
             if (g_nx.pos > len) g_nx.pos = -n;                 // wrapped past the end: re-enter from the right
             layoutLeft(g_nx.text, g_nx.pos, out); break; }
+        case NixieKind::Marquee: {                             // SMOOTH horizontal: draws each tube directly
+            uint32_t dt = now - g_nx.lastStep; if (dt > 500) dt = 500; g_nx.lastStep = now;
+            const int n = populatedCount();
+            const int len = (int)strlen(g_nx.text);
+            const int L = (len < 1 ? 1 : len) + n;             // message + n-blank gap, then wraps
+            const long strip = (long)L * PANEL_W;
+            g_nx.px += (int)((float)PANEL_W / (float)g_nx.ms * (float)dt + 0.5f);   // ms = per glyph-width
+            if (strip > 0 && g_nx.px >= strip) g_nx.px %= strip;
+            const int fx = g_nx.px % PANEL_W, baseG = g_nx.px / PANEL_W;
+            int p = 0;
+            for (int i = TUBE_COUNT - 1; i >= 0; --i) {
+                if (!Tubes::alive((uint8_t)i)) continue;
+                int a = ((baseG + p) % L + L) % L, b = ((baseG + p + 1) % L + L) % L;
+                Tubes::drawTubeHShift((uint8_t)i, a < len ? g_nx.text[a] : ' ', b < len ? g_nx.text[b] : ' ', (uint16_t)fx);
+                p++;
+            }
+            g_nx.dirty = false; return; }
+        case NixieKind::VScroll: {                             // SMOOTH vertical: hyphenated lines slide down
+            if (g_vnlines <= 1) { layoutLeft(g_vnlines ? g_vlines[0] : g_nx.text, 0, out); break; }
+            uint32_t dt = now - g_nx.lastStep; if (dt > 500) dt = 500; g_nx.lastStep = now;
+            g_nx.dy += (int)((float)PANEL_H / (float)g_nx.ms * (float)dt + 0.5f);    // ms = per line height
+            while (g_nx.dy >= PANEL_H) { g_nx.dy -= PANEL_H; g_nx.line = (g_nx.line + 1) % g_vnlines; }
+            const char* cur = g_vlines[g_nx.line];
+            const char* nxt = g_vlines[(g_nx.line + 1) % g_vnlines];
+            const int curL = (int)strlen(cur), nxtL = (int)strlen(nxt);
+            int p = 0;
+            for (int i = TUBE_COUNT - 1; i >= 0; --i) {
+                if (!Tubes::alive((uint8_t)i)) continue;
+                Tubes::drawTubeVShift((uint8_t)i, p < curL ? cur[p] : ' ', p < nxtL ? nxt[p] : ' ', (uint16_t)g_nx.dy);
+                p++;
+            }
+            g_nx.dirty = false; return; }
+        case NixieKind::VPage:                                 // vertical page-flip: cross-fade a line every ms
+            if (!g_nx.dirty && (int32_t)(now - g_nx.nextAt) < 0) return;
+            if (!g_nx.dirty && g_vnlines) g_nx.line = (g_nx.line + 1) % g_vnlines;
+            g_nx.nextAt = now + g_nx.ms;
+            layoutLeft(g_vnlines ? g_vlines[g_nx.line] : g_nx.text, 0, out);
+            break;
         case NixieKind::Countdown: {
             const int32_t left = (int32_t)(g_nx.endAtMs - now);
             if (left > 0) {

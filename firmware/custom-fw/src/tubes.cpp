@@ -389,6 +389,42 @@ void drawGlyphsNixieFade(const uint8_t* idx, const char* from, const char* to, u
     g_lastDrawUs = micros() - t0;
 }
 
+// Smooth marquee frames: one recompose+blit per tube per motion step (no fade).
+// Same LUT + 8-row-block push as nixieFrame, driven by the shift composites.
+void drawTubeHShift(uint8_t i, char cL, char cR, uint16_t fx) {
+    Guard _g;
+    if (!g_ready || !alive(i)) return;
+    const uint32_t t0 = micros();
+    selectTube(i);
+    tft.setSwapBytes(true);
+    int y0 = 0;
+    nixieComposeHShift(plateOf(cL), plateOf(cR), fx, [&](int y, const uint8_t* row) {
+        uint16_t* d = g_nixieBuf + (y - y0) * NIXIE_W;
+        for (int x = 0; x < NIXIE_W; ++x) d[x] = g_nixieLut[row[x]];
+        if (y - y0 == NIXIE_ROWS - 1 || y == NIXIE_H - 1) { tft.pushImage(0, y0, NIXIE_W, y - y0 + 1, g_nixieBuf); y0 = y + 1; }
+    });
+    deselect();
+    g_kind[i] = ContentKind::Clock;
+    g_lastDrawUs = micros() - t0;
+}
+
+void drawTubeVShift(uint8_t i, char cCur, char cNext, uint16_t dy) {
+    Guard _g;
+    if (!g_ready || !alive(i)) return;
+    const uint32_t t0 = micros();
+    selectTube(i);
+    tft.setSwapBytes(true);
+    int y0 = 0;
+    nixieComposeVShift(plateOf(cCur), plateOf(cNext), dy, [&](int y, const uint8_t* row) {
+        uint16_t* d = g_nixieBuf + (y - y0) * NIXIE_W;
+        for (int x = 0; x < NIXIE_W; ++x) d[x] = g_nixieLut[row[x]];
+        if (y - y0 == NIXIE_ROWS - 1 || y == NIXIE_H - 1) { tft.pushImage(0, y0, NIXIE_W, y - y0 + 1, g_nixieBuf); y0 = y + 1; }
+    });
+    deselect();
+    g_kind[i] = ContentKind::Clock;
+    g_lastDrawUs = micros() - t0;
+}
+
 void fill(uint8_t i, uint16_t color565) {
     Guard _g;
     if (!g_ready || !alive(i)) return;
