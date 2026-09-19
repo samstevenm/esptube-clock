@@ -791,7 +791,7 @@ python3 tools/bridge/bridge.py serve         # leave it running; this panel take
       <button class="tiny" data-nudge="-1">−1</button><button class="tiny" data-nudge="-0.2">−0.2</button><b id="stCalPitch">—</b><button class="tiny" data-nudge="0.2">+0.2</button><button class="tiny" data-nudge="1">+1</button><span class="note" style="margin:0">mm</span>
       <button class="mini primary" id="stCalDone">✓ lines are straight</button><button class="mini ghost" id="stCalCancel">cancel</button>
     </div>
-    <div id="stageView"><div id="stageScene"></div><div id="stageHud" class="note"></div></div>
+    <div id="stageView"><div id="stageScene"></div><div id="stageHud" class="note"></div><div id="stageLive" class="note" style="position:absolute;top:6px;right:8px;margin:0;font-weight:700"></div></div>
     <div class="row tight" id="stageInspect" style="flex-wrap:wrap;margin-top:8px"></div>
   </div>
 
@@ -2473,8 +2473,9 @@ const ANIMS={
       g.fillStyle='#dfe8f5'; g.textAlign='right'; g.textBaseline='top'; g.font=`bold 30px ${fontStack('mono')}`; g.fillText(String(Math.round(lv*10)/10),W-14,10); } },
 
   ticker:{ name:'💹 Ticker / dashboard', kind:'span',
-    desc:'Big number + up/down arrow from Crypto (CoinGecko), Stocks (Finnhub key), Weather (open-meteo → met.no → wttr.in), or any JSON URL.',
-    params:[ {k:'source',label:'Source',type:'select',options:[['crypto','Crypto (CoinGecko)'],['stocks','Stocks (Finnhub)'],['weather','Weather (open-meteo / met.no / wttr.in)'],['url','JSON URL']],def:'crypto'},
+    desc:'Live value from Crypto (CoinGecko), Stocks (Finnhub key), Weather (open-meteo → met.no → wttr.in), or any JSON URL. Style: 🔢 Big number dashboard (its own look), or ➡️ Scroll it as a line in the global text style.',
+    params:[ {k:'display',label:'Style',type:'select',options:[['bignum','🔢 Big number'],['scroll','➡️ Scroll (text style)']],def:'bignum'},
+      {k:'source',label:'Source',type:'select',options:[['crypto','Crypto (CoinGecko)'],['stocks','Stocks (Finnhub)'],['weather','Weather (open-meteo / met.no / wttr.in)'],['url','JSON URL']],def:'crypto'},
       {k:'cryptoId',label:'Coin id',type:'text',def:'bitcoin'},
       {k:'cryptoCur',label:'Currency',type:'text',def:'usd'},
       {k:'symbol',label:'Stock symbol',type:'text',def:'AAPL'},
@@ -2487,7 +2488,8 @@ const ANIMS={
       {k:'refresh',label:'Refresh (s)',type:'range',min:10,max:600,def:60},
       {k:'color',label:'Color (pixels)',type:'color',def:'#ffffff'},
       {k:'bg',label:'Background (pixels)',type:'color',def:'#0b1220'} ],
-    native(p,st){ if(!st||st.value==null) return null;
+    wantsPixels(p){ return p.display==='bignum'; },   // big-number is its own pixel dashboard, regardless of the global style
+    native(p,st){ if(p.display==='bignum'||!st||st.value==null) return null;
       const val=Math.round(st.value*100)/100, up=(st.change||0)>=0;
       const chg=(up?'+':'-')+Math.abs(Math.round((st.change||0)*100)/100)+(st.changeIsPct?'%':'');
       return {effect:nixieCfg.effect, text:fmtNative([st.label||'',val,chg,st.unit||''].join(' ')), ms:nixieCfg.ms}; },
@@ -2510,21 +2512,30 @@ const ANIMS={
       if(st.err){ g.fillStyle='#ffd166'; g.textBaseline='middle';
         drawFittedText(g,(p.source==='stocks'?'Stocks: ':'')+st.err,{x:W/2,y:H/2,maxW:W-30,maxH:H-30,size:34,font:FONTS.sans,color:'#ffd166'}); return; }
       if(st.value==null){ g.fillStyle='#6f7c93'; g.textBaseline='middle'; g.font=`22px ${FONTS.sans}`; g.fillText('loading…',W/2,H/2); return; }
-      g.fillStyle='#9fb2cc'; g.textBaseline='alphabetic'; g.font=`600 22px ${FONTS.sans}`; g.fillText(String(st.label||'').toUpperCase(),W/2,44);
+      if(p.display!=='bignum'){                              // scroll it as a line, in the global text style
+        const up=(st.change||0)>=0, chg=(up?'+':'-')+Math.abs(Math.round((st.change||0)*100)/100)+(st.changeIsPct?'%':'');
+        const txt=[st.label||'',(Math.round(st.value*100)/100),chg,st.unit||''].join(' '), size=150, glow=(nixieCfg.style==='native'||nixieCfg.style==='nixie');
+        if(glow){ nixieSpanGlass(g,W,H,p.bg); const col=nixieColor(nixieCfg.color), wt=nixieWeight(); g.font=`${wt} ${size}px ${NIXIE_FAM}`; const tw=g.measureText(txt).width,gap=Math.max(60,size),pw=tw+gap; let x=-((t*80)%pw); for(;x<W;x+=pw) drawNixieAt(g,txt,x,H/2,size,col); }
+        else { g.fillStyle=nixieCfg.color; g.textAlign='left'; g.textBaseline='middle'; g.font=`bold ${size}px ${fontStack(nixieCfg.style)}`; const tw=g.measureText(txt).width,gap=Math.max(60,size),pw=tw+gap; let x=-((t*80)%pw); for(;x<W;x+=pw) g.fillText(txt,x,H/2); }
+        return; }
+      g.fillStyle='#9fb2cc'; g.textBaseline='alphabetic'; g.font=`600 22px ${FONTS.sans}`; g.fillText(String(st.label||'').toUpperCase(),W/2,44);   // BIG NUMBER dashboard
       const val=(Math.abs(st.value)>=1000?Math.round(st.value).toLocaleString():(Math.round(st.value*100)/100));
       drawSpanLine(g,W,H,String(val),p.color,null,'display',160);
       const up=(st.change||0)>=0; g.fillStyle=up?'#3ecf8e':'#ff6b6b'; g.font=`bold 30px ${FONTS.sans}`;
       const chg=(up?'▲ ':'▼ ')+(Math.round((st.change||0)*100)/100)+(st.changeIsPct?'%':''); g.fillText(chg+'  '+(st.unit||''),W/2,H-34); } },
 
-  news:{ name:'📰 News (scrolling headlines)', kind:'span',
-    desc:'Scrolling headlines via rss2json (any RSS feed URL; no key needed, optional key for higher limits). Clear message if blocked.',
+  news:{ name:'📰 News (headlines)', kind:'span',
+    desc:'Headlines via rss2json (any RSS feed). Layout: ➡️ Scroll (global text style), 📰 Newspaper across the screen, or 🗞️ Newspaper per tube — a static, readable card render (the same pattern will serve alerts / summaries).',
     params:[ {k:'feedUrl',label:'RSS feed URL',type:'text',def:'https://feeds.bbci.co.uk/news/world/rss.xml'},
       {k:'apiKey',label:'rss2json key (optional)',type:'text',def:''},
+      {k:'layout',label:'Layout',type:'select',options:[['scroll','➡️ Scroll'],['paper','📰 Newspaper (screen)'],['papertube','🗞️ Newspaper (per tube)']],def:'scroll'},
+      {k:'dwell',label:'Sec / headline (newspaper)',type:'range',min:2,max:30,def:6},
       {k:'refresh',label:'Refresh (s)',type:'range',min:30,max:1800,def:300},
-      {k:'size',label:'Size (font styles)',type:'range',min:40,max:220,def:150},
-      {k:'speed',label:'Speed px/s (font styles)',type:'range',min:10,max:300,def:80},
-      {k:'bg',label:'Background (font styles)',type:'color',def:'#0b1020'} ],
-    native(p,st){ return st&&st.text ? {effect:nixieCfg.effect, text:fmtNative(st.text), ms:nixieCfg.ms} : null; },
+      {k:'size',label:'Size (scroll font styles)',type:'range',min:40,max:220,def:150},
+      {k:'speed',label:'Speed px/s (scroll font styles)',type:'range',min:10,max:300,def:80},
+      {k:'bg',label:'Background',type:'color',def:'#0b1020'} ],
+    wantsPixels(p){ return p.layout!=='scroll'; },   // newspaper layouts are static pixel cards
+    native(p,st){ return (p.layout==='scroll' && st && st.text) ? {effect:nixieCfg.effect, text:fmtNative(st.text), ms:nixieCfg.ms} : null; },
     async poll(p,st){ st.err=''; try{
       const feed=(p.feedUrl||'').trim(); if(!feed) throw new Error('set a feed URL');
       const nk=p.apiKey||apiKeys.rss2json;
@@ -2537,6 +2548,21 @@ const ANIMS={
       if(st.err){ g.textAlign='center'; g.textBaseline='middle';
         drawFittedText(g,'News unavailable:\n'+st.err+'\nconfigure a feed URL',{x:W/2,y:H/2,maxW:W-30,maxH:H-30,size:30,font:FONTS.sans,color:'#ffd166'}); return; }
       const txt=st.text||''; if(!txt){ g.fillStyle='#6f7c93'; g.textAlign='center'; g.textBaseline='middle'; g.font=`22px ${FONTS.sans}`; g.fillText('loading headlines…',W/2,H/2); return; }
+      const hl=st.headlines||[txt];
+      if(p.layout==='paper'){                                // NEWSPAPER across the whole screen: masthead + one big headline
+        const idx=Math.floor(t/Math.max(2,p.dwell))%hl.length;
+        g.fillStyle='#ffd166'; g.textAlign='left'; g.textBaseline='alphabetic'; g.font=`900 ${Math.round(H*0.13)}px ${fontStack('serif')}`; g.fillText('THE ESPTUBE',18,H*0.16);
+        g.strokeStyle='#ffffff55'; g.lineWidth=3; g.beginPath(); g.moveTo(14,H*0.20); g.lineTo(W-14,H*0.20); g.stroke();
+        drawFittedText(g,hl[idx],{x:W/2,y:H*0.58,maxW:W-40,maxH:H*0.62,size:Math.round(H*0.34),font:fontStack('serif'),color:'#ffffff',weight:'800'});
+        g.fillStyle='#8b93a3'; g.textAlign='right'; g.textBaseline='alphabetic'; g.font=`600 ${Math.round(H*0.09)}px ${fontStack('sans')}`; g.fillText((idx+1)+' / '+hl.length,W-16,H-12); return; }
+      if(p.layout==='papertube'){                            // NEWSPAPER per tube: one headline card per column
+        const n=Math.max(1,Math.round(W/CW)), base=Math.floor(t/Math.max(2,p.dwell));
+        for(let k=0;k<n;k++){ const x0=k*CW, i=(base+k)%hl.length;
+          g.fillStyle=(k%2?'#0b1020':'#0e1730'); g.fillRect(x0,0,CW,H);
+          g.strokeStyle='#ffffff33'; g.lineWidth=2; g.strokeRect(x0+3,3,CW-6,H-6);
+          g.fillStyle='#ffd166'; g.textAlign='left'; g.textBaseline='top'; g.font=`800 15px ${fontStack('serif')}`; g.fillText('No.'+(i+1),x0+8,8);
+          drawFittedText(g,hl[i],{x:x0+CW/2,y:H*0.56,maxW:CW-14,maxH:H*0.68,size:34,font:fontStack('serif'),color:'#ffffff',weight:'700'}); }
+        return; }
       const glow=(nixieCfg.style==='native'||nixieCfg.style==='nixie');
       if(glow){                                              // real nixie look: per-tube glass + ghost + bloom
         nixieSpanGlass(g,W,H,p.bg); const col=nixieColor(nixieCfg.color), wt=nixieWeight();
@@ -2718,7 +2744,8 @@ function fmtNative(s){
   return o.replace(/\s+/g,' ').trim().slice(0,255);
 }
 const speedToMs=px=>Math.max(60,Math.min(5000,Math.round(135000/Math.max(5,px||90))));  // px/s -> ms per glyph-width
-function nativeActive(){ const a=currentAnim(); return !!(a&&a.native&&NIXIE_NATIVE()); }   // global Render style = Native nixie
+function nativeActive(){ const a=currentAnim();   // global Render style = Native nixie, unless the effect forces pixels (e.g. ticker Big number)
+  return !!(a&&a.native&&NIXIE_NATIVE()&&!(a.wantsPixels&&a.wantsPixels(engine.params))); }
 async function sendNative(cmd){
   if(!cmd) return;
   if(cmd.preset!=null) return postBare('/preset/'+(cmd.preset|0));
@@ -3475,15 +3502,31 @@ const Stage={ yaw:-26, pitch:14, zoom:1, S:5.2, sel:null, show:'glass', els:{}, 
       sc.appendChild(box); this.els[d.out]={box,cv,ctx:cv.getContext('2d')}; }
     $('#stPitch').value=Layout.pitch(state.layout); this.cam(); this.inspect(); this.paint(); },
   /* the mirror: what is on each tube right now */
+  /* Live mirror: continuously match the clock's displays + LEDs; flag when it's a
+     best-effort snapshot (a face we can't pixel-read) or stale (no recent /status). */
   paint(){ const st=lastStatus, deviceFace=st&&st.mode!=='manual'&&!LIVE.on; const now=new Date(), p2=n=>String(n).padStart(2,'0'), hhmmss=p2(now.getHours())+p2(now.getMinutes())+p2(now.getSeconds());
+    const liveL=populatedList(); let guessing=false;
     for(const k in this.els){ const out=+k, e=this.els[k];
-      if(this.show==='draft'){ const src=document.getElementById('pv'+out); if(src) e.ctx.drawImage(src,0,0,CW,CH); continue; }
-      const raw=Outbox.shown[out];
-      if(raw&&!deviceFace){ if(this.shownRef[out]===raw) continue; this.shownRef[out]=raw; e.ctx.putImageData(new ImageData(rgbaFrom565(raw,CW,CH),CW,CH),0,0); continue; }
-      this.shownRef[out]=null;
-      if(st&&st.mode==='off'){ e.ctx.fillStyle='#000'; e.ctx.fillRect(0,0,CW,CH); }
-      else if(deviceFace&&st&&(st.preset===0||st.preset==null)&&st.mode==='clock'&&populated[out]){ renderClock(e.ctx,Object.assign({},defaultTube().clock,{kind:'digit',face:'nixie',dsource:'fixed',digit:+hhmmss[5-out]})); }
-      else { e.ctx.fillStyle='#05070b'; e.ctx.fillRect(0,0,CW,CH); e.ctx.fillStyle='#55607a'; e.ctx.font='600 13px sans-serif'; e.ctx.textAlign='center'; e.ctx.fillText(populated[out]?(st?(st.mode==='manual'?'pushed by':'clock: '+(st.preset_name||st.mode)):'not connected'):'no screen',CW/2,CH/2); if(st&&st.mode==='manual'&&populated[out]) e.ctx.fillText('someone else',CW/2,CH/2+18); } } },
+      if(this.show==='draft'){ const src=document.getElementById('pv'+out); if(src) e.ctx.drawImage(src,0,0,CW,CH); }
+      else { const raw=Outbox.shown[out];
+        if(raw&&!deviceFace){ if(this.shownRef[out]!==raw){ this.shownRef[out]=raw; e.ctx.putImageData(new ImageData(rgbaFrom565(raw,CW,CH),CW,CH),0,0); } }   // exact: pushed pixels
+        else { this.shownRef[out]=null;
+          if(st&&st.mode==='off'){ e.ctx.fillStyle='#000'; e.ctx.fillRect(0,0,CW,CH); }
+          else if(deviceFace&&st&&st.mode==='clock'&&populated[out]){                       // clock face (nixie or digital), rendered live
+            renderClock(e.ctx,Object.assign({},defaultTube().clock,{kind:'digit',face:(st.preset===1?'digital':'nixie'),dsource:'fixed',digit:+hhmmss[5-out]})); }
+          else if(deviceFace&&st&&st.mode==='nixie'&&st.nixie&&populated[out]){             // nixie message / date — left-aligned snapshot
+            const msg=(st.nixie.text||'').toUpperCase(), pos=liveL.indexOf(out), ch=(pos>=0&&pos<msg.length)?msg[pos]:'';
+            e.ctx.fillStyle='#0a0603'; e.ctx.fillRect(0,0,CW,CH); if(ch&&ch!==' ') drawNixie(e.ctx,ch,{cx:CW/2,cy:CH/2,maxW:CW-10,maxH:CH-12,size:CH*0.78,color:'#ff8a2a',ghost:false}); guessing=true; }
+          else { e.ctx.fillStyle='#05070b'; e.ctx.fillRect(0,0,CW,CH); e.ctx.fillStyle='#55607a'; e.ctx.font='600 13px sans-serif'; e.ctx.textAlign='center'; e.ctx.textBaseline='middle';
+            e.ctx.fillText(populated[out]?(st?(st.mode==='manual'?'pushed by':'clock: '+(st.preset_name||st.mode)):'not connected'):'no screen',CW/2,CH/2);
+            if(st&&st.mode==='manual'&&populated[out]) e.ctx.fillText('someone else',CW/2,CH/2+18); if(populated[out]&&st&&st.mode!=='off') guessing=true; } } }
+      // LED glow mirror — the per-tube colours the helper has pushed (device-run effects can't be read back per tube)
+      const led=LASTLED[out], glass=e.box.querySelector('.tubeglass');
+      if(glass){ glass.style.boxShadow = led ? '0 0 26px 3px rgba('+led+',0.85)' : ''; glass.style.background = led ? 'rgba('+led+',0.10)' : ''; } }
+    const badge=$('#stageLive'); if(badge){ const ageS=lastStatusAt?(Date.now()-lastStatusAt)/1000:Infinity;
+      if(!st||ageS>10){ badge.textContent='⚠ stale'+(isFinite(ageS)?' '+Math.round(ageS)+'s':''); badge.style.color='#ff9b6b'; }
+      else if(guessing){ badge.textContent='● live · best-effort'; badge.style.color='#ffd166'; }
+      else { badge.textContent='● live'; badge.style.color='#3ecf8e'; } } },
   select(out,fromCard){ this.sel=out; for(const k in this.els) this.els[k].box.classList.toggle('sel',+k===out); this.inspect(); if(!fromCard&&populated[out]) selectTube(out); },
   inspect(){ const box=$('#stageInspect'); if(!box) return; box.innerHTML=''; const d=this.sel!=null?Layout.get(state.layout,this.sel):null;
     if(!d){ box.appendChild(el('span',{class:'note',style:'margin:0'},'Click a tube to see and edit its pose (position of the screen centre in mm; +x right, +y up, +z toward you; rotation in degrees).')); return; }
