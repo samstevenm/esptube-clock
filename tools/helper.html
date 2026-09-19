@@ -426,13 +426,18 @@
           <span id="handsOffInd" style="display:none;color:var(--amber)">· 🔌 auto-push paused <a href="#" id="handsOffResume" title="Let auto-push widgets and restore-on-connect push again">resume</a></span></span>
       </div>
       <div class="barcol">
-        <span class="lbl">🕯️ Nixie <span class="note" style="margin:0">— GLOBAL play style, used everywhere nixie renders (this message + Marquee / News / Ticker). The clock draws it; nothing is pushed.</span></span>
+        <span class="lbl">🅰️ TEXT STYLE <span class="note" style="margin:0">— ONE global setting, used everywhere text renders (this message · Marquee · News · Ticker). Native nixie on tubes, or a font for big screens.</span></span>
         <div class="row tight">
-          <input type="text" id="nxText" placeholder="HELLO WORLD" maxlength="240" style="width:150px" spellcheck="false">
-          <select id="nxEffect" title="Global nixie style — applies to every nixie surface (rendered on-device from the glyphs)"><option value="static">Static</option><option value="flash">⚡ Flash</option><option value="scroll">➡️ Scroll (smooth)</option><option value="vscroll">⬇️ Vertical slide</option><option value="vpage">⏬ Vertical pages</option><option value="scrollstep">➡ Step (legacy)</option></select>
-          <label class="inl" title="motion rate: flash toggle · scroll glyph-width · page dwell">every <input type="number" id="nxMs" value="220" min="60" max="10000" step="20" style="width:64px"> ms</label>
-          <label class="inl" title="⚡ render nixie on-device from glyphs (zero pixels) · uncheck = text effects push pixels with their own font/colour"><input type="checkbox" id="nxNative" checked> ⚡ native</label>
-          <button class="mini primary" id="nxShow" title="Show this message on the clock, in the global style">📣 Show</button>
+          <input type="text" id="nxText" placeholder="HELLO WORLD" maxlength="240" class="grow" spellcheck="false">
+          <button class="mini primary" id="nxShow" title="Show this message on the clock, in the global text style">📣 Show</button>
+        </div>
+        <div class="row tight">
+          <label class="inl" title="How text is rendered everywhere. Native = the device's baked nixie glyphs (tubes, zero pixels). The others are pixel fonts that fit any panel — good for TVs / big displays.">Render
+            <select id="nxStyle"><option value="native">⚡ Native nixie</option><option value="nixie">🕯️ Nixie glow</option><option value="display">🔠 Display</option><option value="mono">🔢 Mono</option><option value="sans">Sans</option><option value="serif">Serif</option></select></label>
+          <label class="inl" title="Motion. Vertical slide / pages are native-only; font styles scroll horizontally.">Motion
+            <select id="nxEffect"><option value="static">Static</option><option value="flash">⚡ Flash</option><option value="scroll">➡️ Scroll</option><option value="vscroll">⬇️ Vertical slide</option><option value="vpage">⏬ Vertical pages</option><option value="scrollstep">➡ Step</option></select></label>
+          <label class="inl" title="motion rate: flash toggle · scroll glyph-width · page dwell">every <input type="number" id="nxMs" value="220" min="60" max="10000" step="20" style="width:60px"> ms</label>
+          <label class="inl" title="Colour for the font styles (Native nixie is always warm amber)">Colour <input type="color" id="nxColor" value="#ffb454"></label>
         </div>
         <div class="row tight">
           <label class="inl" title="how long">⏳ <input type="number" id="nxSecs" value="90" min="1" max="359999" style="width:72px"> s</label>
@@ -887,11 +892,18 @@ const CW=135, CH=240;          // panel resolution
 const RAW565_BIG_ENDIAN=true;  // hardware-confirmed: high byte first (big-endian RGB565)
 const LS={ ip:'esptube_ip', scenes:'esptube_scenes', shows:'esptube_shows', nixie:'esptube_nixie', last:'ESPTUBE_STATE_V3',
   cycle:'esptube_cycle', keys:'esptube_keys', pool:'esptube_imgpool', legacy:'esptube_last' };  // all browser-local; nothing here is sent to the device
-// GLOBAL nixie style — one setting used EVERYWHERE nixie text renders (the 🕯️ message panel and
-// the Marquee / News / Ticker native output). effect ∈ static|flash|scroll|vscroll|vpage|scrollstep;
-// ms = motion rate; native = render on-device from glyphs (⚡) vs push pixels (🎨).
-let nixieCfg = { effect:'scroll', ms:220, native:true };
-function loadNixieCfg(){ try{ nixieCfg=Object.assign(nixieCfg, JSON.parse(localStorage.getItem(LS.nixie)||'{}')); }catch(e){} return nixieCfg; }
+// GLOBAL text style — ONE setting used everywhere text renders (the message box and the
+// Marquee / News / Ticker). Scales across hardware: 'native' = the device's baked nixie glyphs
+// (tubes, zero pixels); the font styles push pixels and fit the panel, so the same controls
+// drive a TV or a big display with a Display/Sans face.
+//   style  ∈ native | nixie(glow) | display | mono | sans | serif
+//   effect ∈ scroll | vscroll | vpage | flash | static | scrollstep   (vertical = native only)
+//   ms = motion rate · color = pixel-style colour (native is amber)
+let nixieCfg = { style:'native', effect:'scroll', ms:220, color:'#ffb454' };
+const NIXIE_NATIVE = ()=> nixieCfg.style==='native';
+function loadNixieCfg(){ try{ const o=JSON.parse(localStorage.getItem(LS.nixie)||'{}');
+    if(o.style===undefined && o.native!==undefined) o.style = o.native ? 'native' : 'display';   // migrate old {native:bool}
+    delete o.native; nixieCfg=Object.assign(nixieCfg,o); }catch(e){} return nixieCfg; }
 function saveNixieCfg(){ try{ localStorage.setItem(LS.nixie,JSON.stringify(nixieCfg)); }catch(e){} }
 // Free-tier API keys, saved in THIS browser only (never pushed to the device or git).
 // Not a real secret in localStorage for a personal tool; used as the default when a
@@ -2190,7 +2202,10 @@ async function showDeviceScene(sc){ cycleStop(); stopPushing();
 function showDeviceFace(p){ return showDeviceScene({mode:'device',preset:p|0}); }
 function deviceSceneLabel(sc){ if(sc.nixie) return sc.nixie.kind==='countdown' ? '⏳ countdown' : '🕯️ “'+(sc.nixie.text||'')+'”'; return presetLabel(sc.preset); }
 async function nixieShow(){ const text=$('#nxText').value; if(!text.trim()){ toast('Type a message','bad'); return; }
-  showDeviceScene({mode:'device',preset:0,nixie:{kind:$('#nxEffect').value,text,ms:+$('#nxMs').value||400}}); }
+  if(NIXIE_NATIVE()){ showDeviceScene({mode:'device',preset:0,nixie:{kind:nixieCfg.effect,text,ms:nixieCfg.ms}}); return; }
+  cycleStop(); stopPushing(); setHandsOff(false);                 // font styles: render + push pixels (the classic look)
+  await pushSpanText(text,{font:(nixieCfg.style==='nixie'?'nixie':nixieCfg.style), color:nixieCfg.color, bg:'#000000', size:150});
+  toast('Shown — '+nixieCfg.style,'ok'); }
 function nixieCountdownStart(){ const s=Math.max(1,+$('#nxSecs').value||60);
   showDeviceScene({mode:'device',preset:0,nixie:{kind:'countdown',seconds:s}}); }
 async function pushSnapshot(snap){ if(!snap) return false; const list=populatedList(); if(!list.length) return false;
@@ -2346,22 +2361,20 @@ function pingpong(t,speed){ const ph=(t*(speed/50))%2; return (ph<1?ph:2-ph)*100
 
 const ANIMS={
   marquee:{ name:'🏃 Marquee (scrolling text)', kind:'span',
-    desc:'Text across the clock. Uses the GLOBAL nixie style (🕯️ panel: scroll / vertical slide / vertical pages / …) when ⚡ Native is on; the pixel fields below apply only in 🎨 Pixels mode.',
+    desc:'Text across the display, in the GLOBAL text style (🕯️ panel: Native nixie, or a Nixie-glow / Display / Mono / Sans / Serif font). Size · speed · background below apply to the font styles.',
     params:[ {k:'text',label:'Text',type:'text',def:'ESPTUBE  ★  '},
-      {k:'size',label:'Size (pixels)',type:'range',min:40,max:240,def:170},
-      {k:'speed',label:'Speed px/s (pixels)',type:'range',min:10,max:320,def:90},
-      {k:'font',label:'Font (pixels)',type:'font',def:'display'},
-      {k:'color',label:'Color (pixels)',type:'color',def:'#ffb454'},
-      {k:'bg',label:'Background (pixels)',type:'color',def:'#000000'} ],
+      {k:'size',label:'Size (font styles)',type:'range',min:40,max:240,def:170},
+      {k:'speed',label:'Speed px/s (font styles)',type:'range',min:10,max:320,def:90},
+      {k:'bg',label:'Background (font styles)',type:'color',def:'#000000'} ],
     native(p){ return {effect:nixieCfg.effect, text:fmtNative(p.text), ms:nixieCfg.ms}; },
-    draw(g,W,H,t,p){ const txt=p.text||'';
-      if(p.font==='nixie'){                                   // real nixie: per-tube glass + ghost + bloom
-        nixieSpanGlass(g,W,H,p.bg); const col=nixieColor(p.color), wt=nixieWeight();
+    draw(g,W,H,t,p){ const txt=p.text||''; const glow=(nixieCfg.style==='native'||nixieCfg.style==='nixie');
+      if(glow){                                              // real nixie look: per-tube glass + ghost + bloom
+        nixieSpanGlass(g,W,H,p.bg); const col=nixieColor(nixieCfg.color), wt=nixieWeight();
         g.font=`${wt} ${p.size}px ${NIXIE_FAM}`; const tw=g.measureText(txt).width;
         const gap=Math.max(40,p.size*0.6), pw=tw+gap; let x=-((t*p.speed)%pw);
         for(;x<W;x+=pw) drawNixieAt(g,txt,x,H/2,p.size,col); return; }
-      g.fillStyle=p.bg; g.fillRect(0,0,W,H); g.fillStyle=p.color; g.textBaseline='middle'; g.textAlign='left';
-      g.font=`bold ${p.size}px ${fontStack(p.font)}`; const tw=g.measureText(txt).width;
+      g.fillStyle=p.bg; g.fillRect(0,0,W,H); g.fillStyle=nixieCfg.color; g.textBaseline='middle'; g.textAlign='left';
+      g.font=`bold ${p.size}px ${fontStack(nixieCfg.style)}`; const tw=g.measureText(txt).width;
       const gap=Math.max(40,p.size*0.6), pw=tw+gap; let x=-((t*p.speed)%pw); for(;x<W;x+=pw) g.fillText(txt,x,H/2); } },
 
   bigclock:{ name:'🕐 Big clock / countdown / timer / epoch', kind:'span',
@@ -2508,11 +2521,9 @@ const ANIMS={
     params:[ {k:'feedUrl',label:'RSS feed URL',type:'text',def:'https://feeds.bbci.co.uk/news/world/rss.xml'},
       {k:'apiKey',label:'rss2json key (optional)',type:'text',def:''},
       {k:'refresh',label:'Refresh (s)',type:'range',min:30,max:1800,def:300},
-      {k:'size',label:'Size (pixels)',type:'range',min:40,max:220,def:150},
-      {k:'speed',label:'Speed px/s (pixels)',type:'range',min:10,max:300,def:80},
-      {k:'font',label:'Font (pixels)',type:'font',def:'display'},
-      {k:'color',label:'Color (pixels)',type:'color',def:'#ffd166'},
-      {k:'bg',label:'Background (pixels)',type:'color',def:'#0b1020'} ],
+      {k:'size',label:'Size (font styles)',type:'range',min:40,max:220,def:150},
+      {k:'speed',label:'Speed px/s (font styles)',type:'range',min:10,max:300,def:80},
+      {k:'bg',label:'Background (font styles)',type:'color',def:'#0b1020'} ],
     native(p,st){ return st&&st.text ? {effect:nixieCfg.effect, text:fmtNative(st.text), ms:nixieCfg.ms} : null; },
     async poll(p,st){ st.err=''; try{
       const feed=(p.feedUrl||'').trim(); if(!feed) throw new Error('set a feed URL');
@@ -2526,11 +2537,12 @@ const ANIMS={
       if(st.err){ g.textAlign='center'; g.textBaseline='middle';
         drawFittedText(g,'News unavailable:\n'+st.err+'\nconfigure a feed URL',{x:W/2,y:H/2,maxW:W-30,maxH:H-30,size:30,font:FONTS.sans,color:'#ffd166'}); return; }
       const txt=st.text||''; if(!txt){ g.fillStyle='#6f7c93'; g.textAlign='center'; g.textBaseline='middle'; g.font=`22px ${FONTS.sans}`; g.fillText('loading headlines…',W/2,H/2); return; }
-      if(p.font==='nixie'){                                   // real nixie: per-tube glass + ghost + bloom
-        nixieSpanGlass(g,W,H,p.bg); const col=nixieColor(p.color), wt=nixieWeight();
+      const glow=(nixieCfg.style==='native'||nixieCfg.style==='nixie');
+      if(glow){                                              // real nixie look: per-tube glass + ghost + bloom
+        nixieSpanGlass(g,W,H,p.bg); const col=nixieColor(nixieCfg.color), wt=nixieWeight();
         g.font=`${wt} ${p.size}px ${NIXIE_FAM}`; const tw=g.measureText(txt).width, gap=Math.max(60,p.size), pw=tw+gap;
         let x=-((t*p.speed)%pw); for(;x<W;x+=pw) drawNixieAt(g,txt,x,H/2,p.size,col); return; }
-      g.fillStyle=p.color; g.textBaseline='middle'; g.textAlign='left'; g.font=`bold ${p.size}px ${fontStack(p.font)}`;
+      g.fillStyle=nixieCfg.color; g.textBaseline='middle'; g.textAlign='left'; g.font=`bold ${p.size}px ${fontStack(nixieCfg.style)}`;
       const tw=g.measureText(txt).width, gap=Math.max(60,p.size), pw=tw+gap; let x=-((t*p.speed)%pw);
       for(;x<W;x+=pw) g.fillText(txt,x,H/2); } },
 
@@ -2644,11 +2656,10 @@ function selectAnim(id){ engine.animId=id; const a=ANIMS[id];
   buildParamsForm(); $('#animDesc').textContent=a.desc||''; startPoller(); autosave(); }
 
 function buildParamsForm(){ const c=$('#animParams'), a=currentAnim(), p=engine.params; c.innerHTML='';
-  if(a.native){   // text effects follow the ONE global nixie style — show it here (it's set in the 🕯️ panel)
+  if(a.native){   // text effects follow the ONE global text style — show it (set in the 🅰️ TEXT STYLE panel)
     const nm={static:'Static',flash:'⚡ Flash',scroll:'➡️ Scroll',vscroll:'⬇️ Vertical slide',vpage:'⏬ Vertical pages',scrollstep:'➡ Step'}[nixieCfg.effect]||nixieCfg.effect;
-    const txt = nixieCfg.native ? ('🕯️ Nixie style → '+nm+' · '+nixieCfg.ms+'ms · ⚡ native — GLOBAL, set in the 🕯️ Nixie panel')
-                                : '🕯️ Nixie style → 🎨 pixels (using the fields below) — flip ⚡ native in the 🕯️ Nixie panel';
-    c.appendChild(el('div',{class:'note',style:'margin:0 0 6px;color:var(--amber)'},txt)); }
+    const sm={native:'⚡ Native nixie',nixie:'🕯️ Nixie glow',display:'🔠 Display',mono:'🔢 Mono',sans:'Sans',serif:'Serif'}[nixieCfg.style]||nixieCfg.style;
+    c.appendChild(el('div',{class:'note',style:'margin:0 0 6px;color:var(--amber)'},'🅰️ Text style → '+sm+' · '+nm+' · '+nixieCfg.ms+'ms — GLOBAL, set in the 🅰️ TEXT STYLE panel')); }
   a.params.forEach(f=>{ let node;
     if(f.type==='range'){ node=el('input',{type:'range',min:f.min,max:f.max,step:f.step||1,value:p[f.k]}); }
     else if(f.type==='color'){ node=el('input',{type:'color',value:p[f.k]}); }
@@ -2707,7 +2718,7 @@ function fmtNative(s){
   return o.replace(/\s+/g,' ').trim().slice(0,255);
 }
 const speedToMs=px=>Math.max(60,Math.min(5000,Math.round(135000/Math.max(5,px||90))));  // px/s -> ms per glyph-width
-function nativeActive(){ const a=currentAnim(); return !!(a&&a.native&&nixieCfg.native); }   // global ⚡/🎨 toggle
+function nativeActive(){ const a=currentAnim(); return !!(a&&a.native&&NIXIE_NATIVE()); }   // global Render style = Native nixie
 async function sendNative(cmd){
   if(!cmd) return;
   if(cmd.preset!=null) return postBare('/preset/'+(cmd.preset|0));
@@ -3654,13 +3665,13 @@ function wireGlobals(){
   $('#lvPick').onclick=()=>$('#lvFile').click();
   $('#lvFile').addEventListener('change',()=>{ if($('#lvFile').files[0]) toast('📂 '+$('#lvFile').files[0].name+' — press ▶ Go live','ok'); });
   $('#nxShow').onclick=nixieShow; $('#nxText').addEventListener('keydown',e=>{ if(e.key==='Enter') nixieShow(); });
-  // GLOBAL nixie style: these three controls are the single source of truth; every nixie surface reads nixieCfg.
+  // GLOBAL text style: these controls are the single source of truth; every text surface reads nixieCfg.
   loadNixieCfg();
-  $('#nxEffect').value=nixieCfg.effect; $('#nxMs').value=nixieCfg.ms; $('#nxNative').checked=nixieCfg.native;
-  const nxSync=()=>{ nixieCfg.effect=$('#nxEffect').value; nixieCfg.ms=Math.max(60,+$('#nxMs').value||220); nixieCfg.native=$('#nxNative').checked;
+  $('#nxStyle').value=nixieCfg.style; $('#nxEffect').value=nixieCfg.effect; $('#nxMs').value=nixieCfg.ms; $('#nxColor').value=nixieCfg.color||'#ffb454';
+  const nxSync=()=>{ nixieCfg.style=$('#nxStyle').value; nixieCfg.effect=$('#nxEffect').value; nixieCfg.ms=Math.max(60,+$('#nxMs').value||220); nixieCfg.color=$('#nxColor').value;
     saveNixieCfg(); engine.lastNativeCmd=null;                          // re-send any running native effect in the new style
-    if(currentAnim&&currentAnim()&&currentAnim().native) buildParamsForm(); };   // refresh the studio readout
-  $('#nxEffect').addEventListener('change',nxSync); $('#nxMs').addEventListener('change',nxSync); $('#nxNative').addEventListener('change',nxSync);
+    if(currentAnim&&currentAnim()){ buildParamsForm(); try{ drawCurrentFrame((performance.now()-engine.t0)/1000); }catch(e){} } };  // refresh readout + preview
+  ['#nxStyle','#nxEffect','#nxMs','#nxColor'].forEach(id=>$(id).addEventListener('input',nxSync));
   $('#nxCount').onclick=nixieCountdownStart;
   $('#nxStop').onclick=()=>act(postBare('/nixie/stop'),'Back to the clock').then(()=>setTimeout(poll,150));
   $('#pausedResume').onclick=e=>{ e.preventDefault(); setPaused(false); };
