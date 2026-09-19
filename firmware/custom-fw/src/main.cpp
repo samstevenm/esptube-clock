@@ -16,7 +16,9 @@
 
 #include "config.h"
 #include "identity.h"        // per-device id (MAC), runtime hostname, unique recovery-AP SSID
-#include "secrets.h"          // optional, UNUSED fallback (no real creds compiled in)
+#if __has_include("secrets.h")
+#include "secrets.h"          // optional, UNUSED fallback (WiFi is NVS/captive-portal provisioned).
+#endif                        //   Guarded so a clean clone (no secrets.h) still compiles — see secrets.h.example.
 #include "tubes.h"
 #include "leds.h"
 #include "buttons.h"

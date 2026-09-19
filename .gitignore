@@ -21,3 +21,6 @@ secrets/
 
 # python bytecode
 __pycache__/
+
+# runtime / coordination logs (may contain Mattermost URLs, tokens, IPs) — never commit
+logs/

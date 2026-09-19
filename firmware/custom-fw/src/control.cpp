@@ -383,10 +383,11 @@ void nextPreset() { applyPreset((uint8_t)((g_preset + 1) % PRESET_N), true); }
 bool setPresetByIndex(int i) { if (i < 0 || i >= PRESET_N) return false; applyPreset((uint8_t)i, true); return true; }
 
 // ---- On-device menu (v2): nixie-letter labels, no browser needed ---------------
-// Long-press MODE opens/closes it. In the list: UP/DOWN move, MODE selects, POWER exits.
-// Selecting FACE/LED/FPS opens that item in place (you STAY in the menu): UP/DOWN then
-// change the value live and MODE/POWER step back to the list — so you can scroll faces
-// and effects instead of the menu dropping out after one press.
+// Click-only, context-driven (buttons.cpp sends one click per press; short/long is unreliable on
+// this board). From the clock MODE opens the menu. In the list: UP/DOWN move, MODE selects/enters,
+// POWER backs out (at the top = close). Selecting FACE/LED/FPS opens that item in place (you STAY in
+// the menu): UP/DOWN change the value, MODE confirms + returns to the list, POWER cancels.
+// The whole item list is dumped to the serial console on open (openMenu).
 // Items: FACE (device face) · LED (underglow effect) · BRI+ / BRI- ·
 // WIFI (scrolls the IP in nixie glyphs) · TEST (midnight clock-sweep slice) ·
 // FPS (stream frame rate) · BOOT (restart) · EXIT.
@@ -412,7 +413,8 @@ static void openMenu() {
     g_menuOpen = true; g_menuIdx = 0; g_menuEdit = -1;
     g_mode = Mode::Manual;         // stop the clock repainting under the menu
     Tubes::setNixieFadeSteps(2); forceRedraw(); drawMenu();
-    Serial.println("[control] menu open");
+    Serial.println("[menu] open (UP/DOWN move · MODE select · POWER back) — items:");
+    for (int i = 0; i < MENU_N; ++i) Serial.printf("[menu]   %d %s\n", i, MENU[i].label);
 }
 static void closeMenu(bool toClock = true) {
     g_menuOpen = false; g_menuEdit = -1;
@@ -473,41 +475,33 @@ static void menuSelect() {
     }
 }
 
-void onButton(Button b, bool longPress) {
-    // Long-press MODE toggles the on-device menu from anywhere.
-    if (b == Button::Mode && longPress) { g_menuOpen ? closeMenu(true) : openMenu(); return; }
-    // While the menu is open the buttons drive it.
-    if (g_menuOpen) {
-        if (g_menuEdit >= 0) {                          // an item is open: UP/DOWN navigate it, MODE applies, POWER cancels
-            switch (b) {
-                case Button::Up:    menuEditStep(-1);    break;
-                case Button::Down:  menuEditStep(+1);    break;
-                case Button::Mode:  menuEditExit(true);  break;   // confirm
-                case Button::Power: menuEditExit(false); break;   // cancel
-            }
-            return;
-        }
+// Click-only, context-driven (buttons.cpp delivers one click per press — short vs long is not reliable
+// on this board, so the menu never depends on it). MODE = open/select/confirm, POWER = back/close,
+// UP/DOWN = move/adjust. `longPress` is ignored.
+void onButton(Button b, bool /*longPress*/) {
+    if (!g_menuOpen) {                                  // ---- clock face ----
         switch (b) {
-            case Button::Up:    menuNav(-1);   break;   // previous item
-            case Button::Down:  menuNav(+1);   break;   // next item
-            case Button::Mode:  menuSelect();  break;   // select (opens the item's editor)
-            case Button::Power: closeMenu(true); break; // exit the menu
+            case Button::Mode:  openMenu(); break;                  // MODE opens the menu (faces live inside it now)
+            case Button::Power: setMode(g_mode == Mode::Off ? g_lastNonOff : Mode::Off); break;
+            case Button::Up:   { int v = (int)g_bright + 32; if (v > 255) v = 255; setBrightness((uint8_t)v); break; }
+            case Button::Down: { int v = (int)g_bright - 32; if (v < 0)   v = 0;   setBrightness((uint8_t)v); break; }
         }
         return;
     }
-    switch (b) {
-        case Button::Mode:                       // next device-native preset
-            nextPreset();
-            break;
-        case Button::Power:                      // display on/off
-            setMode(g_mode == Mode::Off ? g_lastNonOff : Mode::Off);
-            break;
-        case Button::Up: {                       // brightness up
-            int v = (int)g_bright + 32; if (v > 255) v = 255; setBrightness((uint8_t)v); break;
+    if (g_menuEdit >= 0) {                              // ---- inside an item ----
+        switch (b) {
+            case Button::Up:    menuEditStep(-1);    break;
+            case Button::Down:  menuEditStep(+1);    break;
+            case Button::Mode:  menuEditExit(true);  break;         // confirm / apply, back to the list
+            case Button::Power: menuEditExit(false); break;         // cancel, back to the list
         }
-        case Button::Down: {                     // brightness down
-            int v = (int)g_bright - 32; if (v < 0) v = 0; setBrightness((uint8_t)v); break;
-        }
+        return;
+    }
+    switch (b) {                                        // ---- menu list ----
+        case Button::Up:    menuNav(-1);     break;
+        case Button::Down:  menuNav(+1);     break;
+        case Button::Mode:  menuSelect();    break;                 // enter / activate the item
+        case Button::Power: closeMenu(true); break;                 // back out of the menu
     }
 }
 
