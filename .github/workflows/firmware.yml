@@ -15,14 +15,13 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write   # only the draft-release step on a tag needs this; artifacts need read
-    env:
-      # platformio.ini hard-codes an absolute build_dir for the author's Mac; PlatformIO honours
-      # this env var as an override, so the ini stays untouched.
-      PLATFORMIO_BUILD_DIR: ${{ runner.temp }}/pio-build
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # scripts/gen_web_index.py stamps FW_VERSION from `git rev-parse`
+
+      - name: Point PlatformIO's build dir at runner temp (platformio.ini hard-codes an absolute Mac path; the env var overrides it, ini untouched)
+        run: echo "PLATFORMIO_BUILD_DIR=$RUNNER_TEMP/pio-build" >> "$GITHUB_ENV"
 
       - uses: actions/setup-python@v5
         with:
