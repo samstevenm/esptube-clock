@@ -2225,7 +2225,8 @@ async function masterClear(){ let stopped=[];
   if(LIVE.on){ liveStop(); stopped.push('live'); }
   if(_bridgeSeen){ try{ const r=await fetch(BRIDGE+'/bridge/status',{signal:AbortSignal.timeout(1200)}); const st=r.ok?await r.json():null; if(st&&st.streaming){ await fetch(BRIDGE+'/bridge/stop',{method:'POST'}); stopped.push('bridge'); } }catch(e){} }
   if(cycle.on){ cycleStop(); stopped.push('cycle'); } if(engine.pushing){ stopPushing(); stopped.push('animation'); }
-  forgetDevice(); setHandsOff(true,'cleared');
+  try{ if(typeof AUDIO!=='undefined'&&AUDIO.active()){ AUDIO.disable(); stopped.push('audio'); } }catch(e){}
+  engine.backoff=0; forgetDevice(); setHandsOff(true,'cleared');
   // supersede FIRST: frames already on their way stop drawing (ESP/1.1 CANCEL + clear), so nothing repaints over the dark glass
   const ok=await act(Outbox.supersede({clear:true}),'All cleared'+(stopped.length?' · stopped '+stopped.join(', '):''));
   if(ok) setTimeout(poll,250); }
@@ -2941,7 +2942,7 @@ async function pushCurrentFrame(){ const a=currentAnim(), list=engine.curList||p
   for(const j of jobs){
     if(j.raw){ try{ await pushEncoded(j.idx,j.raw); }catch(e){ failed++; } }   // diffs vs the Tile's baseline, blits changed rows
     if(j.led){ try{ await pushGlowRgb(j.idx,j.led); }catch(e){ failed++; } } }
-  engine.failed=failed; updateEngStat(); }
+  engine.failed=failed; engine.frameFailed=failed; updateEngStat(); }
 
 /* ---- Native nixie output: stream TEXT, not pixels. The clock renders + scrolls
    from its baked glyph plates; we only (re)POST when the command actually changes
@@ -2967,23 +2968,25 @@ async function sendNative(cmd){
   return postJson('/nixie/text',{text:String(cmd.text||''),effect:cmd.effect||'static',ms:+cmd.ms||500});
 }
 async function pushCurrentNative(){
-  const a=currentAnim(); if(!a||!a.native) return;
+  const a=currentAnim(); if(!a||!a.native){ engine.frameFailed=0; return; } let nf=0;
   let cmd=null; try{ cmd=a.native(engine.params,engine.runState); }catch(e){}
   const key=cmd?JSON.stringify(cmd):null;
   if(key && key!==engine.lastNativeCmd){                 // only when the content changed
     engine.lastNativeCmd=key; engine.lastNativeSent=true;
-    try{ await sendNative(cmd); pushStats.frames++; }catch(e){ engine.failed++; }
+    try{ await sendNative(cmd); pushStats.frames++; }catch(e){ engine.failed++; nf++; }
     updateEngStat();
   }
-  if(a.led){ const list=engine.curList||populatedList(); for(const idx of list){ const led=engine.curLeds&&engine.curLeds[idx]; if(led){ try{ await pushGlowRgb(idx,led); }catch(e){} } } }   // native text effects can also drive the underglow (e.g. karaoke beat)
+  if(a.led){ const list=engine.curList||populatedList(); for(const idx of list){ const led=engine.curLeds&&engine.curLeds[idx]; if(led){ try{ await pushGlowRgb(idx,led); }catch(e){ nf++; } } } }   // native text effects can also drive the underglow (e.g. karaoke beat)
+  engine.frameFailed=nf;
 }
 
 /* self-paced loop (setTimeout, not rAF): keeps pushing to the clock even when
    the tab is backgrounded; idles the preview when hidden to save CPU. */
 function scheduleFrame(){ clearTimeout(engine.timer);
   // native output only re-sends on change, so keep the preview cadence; pixel pushing paces to fps.
-  const delay = (engine.pushing && !nativeActive()) ? Math.max(30,1000/engine.fps) : (document.hidden?600:66);
-  engine.timer=setTimeout(frameLoop,delay); }
+  // + backoff: when the device is bogged (frames failing), stretch the interval so we stop piling on.
+  const base = (engine.pushing && !nativeActive()) ? Math.max(30,1000/engine.fps) : (document.hidden?600:66);
+  engine.timer=setTimeout(frameLoop, base + (engine.backoff||0)); }
 async function frameLoop(){
   const t=(performance.now()-engine.t0)/1000, a=currentAnim();
   try{ if(AUDIO.active()) AUDIO.sample(); }catch(e){}   // one audio read per frame → beat/level for karaoke + VU
@@ -2992,15 +2995,19 @@ async function frameLoop(){
   let dk=null; if(a&&a.bufferKey){ try{ const k=a.bufferKey(engine.params,engine.runState,t); if(k!=null) dk=k+'|'+populatedList().length; }catch(e){} }
   if(dk===null||dk!==engine.lastDrawKey){ engine.lastDrawKey=dk; try{ drawCurrentFrame(t); }catch(e){} }   // BUFFER the composition: recompute only when content changes; animations (dk=null) redraw every frame
   if(engine.pushing && !engine.busy){ engine.busy=true;
-    try{ if(nativeActive()) await pushCurrentNative(); else await pushCurrentFrame(); }catch(e){} engine.busy=false; }
+    try{ if(nativeActive()) await pushCurrentNative(); else await pushCurrentFrame(); }catch(e){} engine.busy=false;
+    if((engine.frameFailed||0)>0) engine.backoff=Math.min(3000,(engine.backoff||0)*1.6+120);   // device bogged → exponential back-off
+    else engine.backoff=Math.max(0,(engine.backoff||0)*0.7-8); }                                // recovering → ease back in
+  else engine.backoff=Math.max(0,(engine.backoff||0)*0.6-20);
   scheduleFrame(); }
 function updateEngStat(){ const d=$('#engDot'), s=$('#engStat');
-  if(engine.pushing){ d.className=engine.failed?'dot warn':'dot on';
-    if(nativeActive()){ s.textContent='native ⚡ · the clock renders it · '+(pushStats.frames||0)+' sent · 0 pixels'+(engine.failed?' · ⚠ '+engine.failed+' failed':''); }
-    else { const kb=Math.round(pushStats.bytes/1024); s.textContent='pushing · '+pushStats.rects+' blits · '+pushStats.frames+' frames · '+pushStats.skipped+' skipped · '+kb+' KB'+(engine.failed?' · ⚠ '+engine.failed+' failed':''); } }
+  const bo=(engine.backoff||0)>60?' · ⏳ backing off '+Math.round(engine.backoff)+'ms':'';
+  if(engine.pushing){ d.className=(engine.backoff>400)?'dot warn':engine.failed?'dot warn':'dot on';
+    if(nativeActive()){ s.textContent='native ⚡ · the clock renders it · '+(pushStats.frames||0)+' sent · 0 pixels'+(engine.failed?' · ⚠ '+engine.failed+' failed':'')+bo; }
+    else { const kb=Math.round(pushStats.bytes/1024); s.textContent='pushing · '+pushStats.rects+' blits · '+pushStats.frames+' frames · '+pushStats.skipped+' skipped · '+kb+' KB'+(engine.failed?' · ⚠ '+engine.failed+' failed':'')+bo; } }
   else { d.className='dot'; s.textContent='preview only'; } }
 function startPushing(){ if(state.paused){ toast('⏸ Paused — ▶ resume first','bad'); return; }
-  setHandsOff(false); engine.pushing=true; engine.failed=0; engine.lastNativeCmd=null; engine.lastFrameKey=null; engine.lastDrawKey=null; Object.assign(pushStats,{frames:0,rects:0,skipped:0,bytes:0}); updateEngStat(); scheduleFrame();
+  setHandsOff(false); engine.pushing=true; engine.failed=0; engine.frameFailed=0; engine.backoff=0; engine.lastNativeCmd=null; engine.lastFrameKey=null; engine.lastDrawKey=null; Object.assign(pushStats,{frames:0,rects:0,skipped:0,bytes:0}); updateEngStat(); scheduleFrame();
   toast((nativeActive()?'Native nixie — ':'Animation pushing — ')+currentAnim().name,'ok'); }
 function stopPushing(){ engine.pushing=false;
   if(engine.lastNativeSent){ engine.lastNativeSent=false; engine.lastNativeCmd=null; act(postBare('/nixie/stop')); }  // native → hand back to the clock
