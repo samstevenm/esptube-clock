@@ -860,6 +860,13 @@ python3 tools/bridge/bridge.py serve         # leave it running; this panel take
         This helper is a richer, offline-first companion.</div>
   </div>
 
+  <!-- ===================== API REFERENCE ===================== -->
+  <div class="panel">
+    <h2>📖 API reference <span class="sub">every REST call · try it · copy curl</span></h2>
+    <div class="note">Live against the connected clock (<code id="apiBase">—</code>). Edit a path or JSON body, then <b>▶ Try</b> it or <b>⎘ curl</b> to copy. GET is safe; POST changes the clock. Full protocol notes: <code>docs/</code>.</div>
+    <div id="apiDocs"></div>
+  </div>
+
   <div class="note" style="text-align:center;padding:6px 0 20px">
     Local file · nothing leaves your machine except REST / WebSocket traffic to the clock, the bridge on 127.0.0.1:8787,
     your USB serial port (and open-meteo.com, api.met.no, wttr.in / api.coingecko.com / your JSON URL for the data widgets).
@@ -3062,6 +3069,43 @@ function showEditSave(){ let o; try{ o=JSON.parse($('#showEditText').value); }ca
   const name=($('#showEditName').value||'').trim()||o.name||'Show';
   if(showLibSave(name,o)){ toast('Saved show "'+name+'"','ok'); const w=$('#showEditWrap'); if(w) w.open=false; } }
 
+/* ---- API reference: live "▶ Try" + "⎘ curl" for the REST surface ---- */
+const API_DOCS=[
+  {m:'GET', p:'/status', d:'Everything: mode, wifi, tubes, stream, nixie, layout…'},
+  {m:'POST',p:'/nixie/text', d:'Native nixie message, zero pixels. effect: static | flash | scroll | vscroll | vpage | scrollstep', body:{text:'HELLO WORLD',effect:'scroll',ms:220}},
+  {m:'POST',p:'/nixie/countdown', d:'On-device countdown; flashes 0000, then the clock', body:{seconds:90}},
+  {m:'POST',p:'/nixie/stop', d:'Stop the message and hand back to the clock'},
+  {m:'POST',p:'/preset/0', d:'Device face — 0 nixie · 1 digital · 2 LED show · 3 off · 4 date (also /preset/next)'},
+  {m:'POST',p:'/mode/clock', d:'Display mode: clock | off | manual'},
+  {m:'POST',p:'/button/mode', d:'Virtual button — up | down | mode | power'},
+  {m:'POST',p:'/led/rainbow', d:'Underglow effect: off | solid | rainbow | breathe | comet'},
+  {m:'POST',p:'/led/solid', d:'Solid underglow colour', body:{r:255,g:120,b:20}},
+  {m:'POST',p:'/config/brightness', d:'Display brightness 0–255', body:{value:160}},
+  {m:'POST',p:'/tube/1/rgb', d:'One tube’s underglow (tube 0 = far right)', body:{r:0,g:180,b:255}},
+  {m:'POST',p:'/tubes/clear', d:'Blank every tube'},
+  {m:'GET', p:'/peers', d:'Other ESPTube clocks on the LAN (mDNS discovery)'},
+  {m:'GET', p:'/layout.json', d:'The measured 3-D tube layout'},
+  {m:'POST',p:'/config/tz', d:'POSIX timezone string', body:{tz:'PST8PDT,M3.2.0,M11.1.0'}},
+];
+function copyText(s){ if(navigator.clipboard && window.isSecureContext){ navigator.clipboard.writeText(s).then(()=>toast('Copied','ok'),()=>fallbackCopy(s)); return; } fallbackCopy(s); }
+function fallbackCopy(s){ try{ const t=el('textarea',{}); t.value=s; t.style.position='fixed'; t.style.opacity='0'; document.body.appendChild(t); t.focus(); t.select(); document.execCommand('copy'); t.remove(); toast('Copied','ok'); }catch(e){ toast('Copy failed','bad'); } }
+function curlFor(m,path,bodyStr){ let c="curl"+(m!=='GET'?" -X "+m:"")+" '"+base()+path+"'"; if(bodyStr&&m!=='GET') c+=" -H 'Content-Type: application/json' -d '"+String(bodyStr).replace(/'/g,"'\\''")+"'"; return c; }
+function renderApiDocs(){ const box=$('#apiDocs'); if(!box) return; const bE=$('#apiBase'); if(bE) bE.textContent=base(); box.innerHTML='';
+  API_DOCS.forEach(e=>{
+    const pathI=el('input',{type:'text',value:e.p,spellcheck:'false',class:'mono grow',style:'min-width:150px'});
+    const bodyI=e.body?el('textarea',{spellcheck:'false',class:'mono',rows:'1',style:'width:100%;box-sizing:border-box;font-size:12px;margin-top:3px'}):null; if(bodyI) bodyI.value=JSON.stringify(e.body);
+    const out=el('pre',{class:'note',style:'margin:3px 0 0;white-space:pre-wrap;max-height:130px;overflow:auto;display:none'});
+    const tryB=el('button',{class:'tiny primary',title:'Send this to the clock'},'▶ Try');
+    tryB.onclick=async()=>{ out.style.display=''; out.textContent='…'; try{ const opt={method:e.m}; if(bodyI){ opt.headers={'Content-Type':'application/json'}; opt.body=bodyI.value; }
+        const r=await api(pathI.value,opt); const txt=await r.text(); out.textContent=r.status+' '+(r.statusText||'')+'\n'+txt.slice(0,700); }
+      catch(err){ out.textContent='✗ '+(err&&err.message||err); } };
+    const copyB=el('button',{class:'tiny',title:'Copy a curl command for this call'},'⎘ curl'); copyB.onclick=()=>copyText(curlFor(e.m,pathI.value,bodyI?bodyI.value:null));
+    box.appendChild(el('div',{class:'apirow',style:'padding:6px 0;border-top:1px solid var(--line)'},[
+      el('div',{class:'row tight'},[ el('span',{class:'mono',style:'min-width:46px;text-align:center;font-weight:700;color:'+(e.m==='GET'?'#3ecf8e':'#ffb454')},e.m), pathI, tryB, copyB ]),
+      el('div',{class:'note',style:'margin:2px 0 0'},e.d),
+      ...(bodyI?[bodyI]:[]), out ])); });
+}
+
 function mergeTube(t){ const d=defaultTube(); const out=Object.assign(d,t||{});
   for(const k of ['text','color','picture','weather','signal','clock','ticker','custom','html']) out[k]=Object.assign(defaultTube()[k],(t&&t[k])||{});
   out.comps=Array.isArray(out.comps)?out.comps.map(c=>Object.assign(defaultComp(),c||{})):[];   // complications ride along in scenes; always an array
@@ -3660,7 +3704,7 @@ function wireGlobals(){
   $('#showEditSaveBtn').onclick=showEditSave;
   $('#showImportBtn').onclick=()=>$('#showImportFile').click();
   $('#showImportFile').addEventListener('change',e=>{ if(e.target.files[0]) showImportPlay(e.target.files[0]); e.target.value=''; });
-  seedShows(); renderShowList();
+  seedShows(); renderShowList(); renderApiDocs();
   $('#cycleIv').addEventListener('change',()=>{ const c=loadCycleCfg(); c.interval=Math.max(3,Math.min(3600,+$('#cycleIv').value||30)); saveCycleCfg(c); if(cycle.on) cycleArmTimer(); });
   $('#cycleAll').onclick=()=>{ const c=loadCycleCfg(); c.names=sceneNames(); saveCycleCfg(c); renderSceneList(); };
   $('#cycleNone').onclick=()=>{ const c=loadCycleCfg(); c.names=[]; saveCycleCfg(c); renderSceneList(); };

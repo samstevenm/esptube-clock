@@ -14,8 +14,14 @@ web console's renderer:
 | | |
 |:---:|:---:|
 | ![Nixie clock](images/screenshots/clock-nixie.png)<br>**Nixie clock** | ![Date](images/screenshots/date-nixie.png)<br>**Date** |
-| ![Scrolling marquee](images/screenshots/marquee-nixie.png)<br>**Scrolling marquee** | ![Big clock](images/screenshots/bigclock-nixie.png)<br>**Big clock** |
-| ![Countdown](images/screenshots/countdown-nixie.png)<br>**Countdown timer** | ![Calendar](images/screenshots/calendar.png)<br>**Month calendar** |
+| ![Scrolling marquee](images/screenshots/marquee-nixie.png)<br>**Scrolling marquee** | ![Vertical marquee](images/screenshots/vertical-marquee.png)<br>**Vertical marquee** (hyphenated, scrolls down) |
+| ![Big clock](images/screenshots/bigclock-nixie.png)<br>**Big clock** | ![Countdown](images/screenshots/countdown-nixie.png)<br>**Countdown timer** |
+| ![Month calendar](images/screenshots/calendar.png)<br>**Month calendar** | ![Tube swap](images/screenshots/swap.png)<br>**Per-tube control / swap** |
+| ![Pong](images/screenshots/pong.png)<br>**Pong** — across the tubes | |
+
+Text runs on the device's **native nixie engine** (zero pixels streamed); graphics like pong and the
+per-tube swap push pixels. A built-in web console drives it all — scenes, timed **shows**, and a live
+**API reference** (try any REST call, copy the curl).
 
 ## Status: complete & working ✅
 
