@@ -2549,20 +2549,13 @@ const ANIMS={
         drawFittedText(g,'News unavailable:\n'+st.err+'\nconfigure a feed URL',{x:W/2,y:H/2,maxW:W-30,maxH:H-30,size:30,font:FONTS.sans,color:'#ffd166'}); return; }
       const txt=st.text||''; if(!txt){ g.fillStyle='#6f7c93'; g.textAlign='center'; g.textBaseline='middle'; g.font=`22px ${FONTS.sans}`; g.fillText('loading headlines…',W/2,H/2); return; }
       const hl=st.headlines||[txt];
-      if(p.layout==='paper'){                                // NEWSPAPER across the whole screen: masthead + one big headline
+      if(p.layout==='paper'){                                // NEWSPAPER across the screen (shared card primitive)
         const idx=Math.floor(t/Math.max(2,p.dwell))%hl.length;
-        g.fillStyle='#ffd166'; g.textAlign='left'; g.textBaseline='alphabetic'; g.font=`900 ${Math.round(H*0.13)}px ${fontStack('serif')}`; g.fillText('THE ESPTUBE',18,H*0.16);
-        g.strokeStyle='#ffffff55'; g.lineWidth=3; g.beginPath(); g.moveTo(14,H*0.20); g.lineTo(W-14,H*0.20); g.stroke();
-        drawFittedText(g,hl[idx],{x:W/2,y:H*0.58,maxW:W-40,maxH:H*0.62,size:Math.round(H*0.34),font:fontStack('serif'),color:'#ffffff',weight:'800'});
-        g.fillStyle='#8b93a3'; g.textAlign='right'; g.textBaseline='alphabetic'; g.font=`600 ${Math.round(H*0.09)}px ${fontStack('sans')}`; g.fillText((idx+1)+' / '+hl.length,W-16,H-12); return; }
+        drawCardSpan(g,W,H,{label:'THE ESPTUBE',body:hl[idx],color:'#ffd166',bg:p.bg,sub:(idx+1)+' / '+hl.length}); return; }
       if(p.layout==='papertube'){                            // NEWSPAPER per tube: one headline card per column
-        const n=Math.max(1,Math.round(W/CW)), base=Math.floor(t/Math.max(2,p.dwell));
-        for(let k=0;k<n;k++){ const x0=k*CW, i=(base+k)%hl.length;
-          g.fillStyle=(k%2?'#0b1020':'#0e1730'); g.fillRect(x0,0,CW,H);
-          g.strokeStyle='#ffffff33'; g.lineWidth=2; g.strokeRect(x0+3,3,CW-6,H-6);
-          g.fillStyle='#ffd166'; g.textAlign='left'; g.textBaseline='top'; g.font=`800 15px ${fontStack('serif')}`; g.fillText('No.'+(i+1),x0+8,8);
-          drawFittedText(g,hl[i],{x:x0+CW/2,y:H*0.56,maxW:CW-14,maxH:H*0.68,size:34,font:fontStack('serif'),color:'#ffffff',weight:'700'}); }
-        return; }
+        const n=Math.max(1,Math.round(W/CW)), base=Math.floor(t/Math.max(2,p.dwell)), items=[], labels=[];
+        for(let k=0;k<n;k++){ const i=(base+k)%hl.length; items.push(hl[i]); labels.push('No.'+(i+1)); }
+        drawCardTubes(g,W,H,{items,labels,color:'#ffd166',bg:p.bg}); return; }
       const glow=(nixieCfg.style==='native'||nixieCfg.style==='nixie');
       if(glow){                                              // real nixie look: per-tube glass + ghost + bloom
         nixieSpanGlass(g,W,H,p.bg); const col=nixieColor(nixieCfg.color), wt=nixieWeight();
@@ -2631,16 +2624,24 @@ const ANIMS={
         g.fillText(String(d),CW_/2,CH_/2-off+CH_); g.fillText(String((d+9)%10),CW_/2,CH_/2-off); g.fillText(String((d+1)%10),CW_/2,CH_/2-off-CH_)?0:0;
         g.fillText(String((d+1)%10),CW_/2,CH_/2-off+CH_*2); } } },
 
-  alert:{ name:'🚨 Alert flash', kind:'span',
-    desc:'Blink a message + LEDs for notifications.',
-    params:[ {k:'text',label:'Text',type:'text',def:'⚠ ALERT'},{k:'rate',label:'Flashes/s',type:'range',min:0.5,max:8,step:0.5,def:2},
-      {k:'colorA',label:'Flash color (pixels)',type:'color',def:'#ff3b3b'},{k:'colorB',label:'Off color (pixels)',type:'color',def:'#000000'},
-      {k:'textColor',label:'Text color (pixels)',type:'color',def:'#ffffff'},{k:'size',label:'Size (pixels)',type:'range',min:60,max:220,def:130},
-      {k:'font',label:'Font (pixels)',type:'font',def:'display'} ],
-    native(p){ return {effect:'flash', text:fmtNative(p.text), ms:Math.round(1000/(2*Math.max(0.5,p.rate)))}; },
-    draw(g,W,H,t,p){ const on=Math.floor(t*p.rate)%2===0; g.fillStyle=on?p.colorA:p.colorB; g.fillRect(0,0,W,H);
-      if(on) drawSpanLine(g,W,H,p.text||'',p.textColor,null,p.font,p.size); },
-    led(t,p,k,n){ const on=Math.floor(t*p.rate)%2===0; return on?hexToRgb(p.colorA):{r:0,g:0,b:0}; } },
+  alert:{ name:'🚨 Alert', kind:'span',
+    desc:'A notification, built on the card pattern: ⚡ Flash (blink + LEDs, native nixie), 📢 Banner (a level-coloured card across the screen), or 🗂️ Cards (one per tube). Level sets the colour and the underglow — the template for summarized content.',
+    params:[ {k:'text',label:'Message',type:'text',def:'SEVERE WEATHER WARNING'},
+      {k:'level',label:'Level',type:'select',options:[['info','ℹ️ Info'],['warning','⚠️ Warning'],['critical','⛔ Critical'],['success','✅ Success']],def:'warning'},
+      {k:'layout',label:'Layout',type:'select',options:[['flash','⚡ Flash + LEDs'],['banner','📢 Banner (screen)'],['cards','🗂️ Cards (per tube)']],def:'banner'},
+      {k:'rate',label:'Flashes/s (flash)',type:'range',min:0.5,max:8,step:0.5,def:2},
+      {k:'bg',label:'Background',type:'color',def:'#0b0f16'} ],
+    _c(p){ return {info:'#4db6ff',warning:'#ffb454',critical:'#ff3b3b',success:'#3ecf8e'}[p.level]||'#ffb454'; },
+    _rgb(p){ return {info:{r:40,g:140,b:255},warning:{r:255,g:150,b:20},critical:{r:255,g:40,b:40},success:{r:40,g:200,b:120}}[p.level]||{r:255,g:150,b:20}; },
+    wantsPixels(p){ return p.layout!=='flash'; },
+    native(p){ return p.layout==='flash' ? {effect:'flash', text:fmtNative(p.text), ms:Math.round(1000/(2*Math.max(0.5,p.rate)))} : null; },
+    draw(g,W,H,t,p){ const C=this._c(p), icon={info:'ℹ',warning:'⚠',critical:'⛔',success:'✓'}[p.level]||'⚠';
+      if(p.layout==='banner'){ drawCardSpan(g,W,H,{label:icon+' '+p.level, body:p.text, color:C, bg:p.bg});
+        if(p.level==='critical'&&Math.floor(t*2)%2){ g.strokeStyle=C; g.lineWidth=8; g.strokeRect(4,4,W-8,H-8); } return; }   // critical border-pulse
+      if(p.layout==='cards'){ const n=Math.max(1,Math.round(W/CW)); drawCardTubes(g,W,H,{items:splitCards(p.text,n),labels:Array(n).fill(icon),color:C,bg:p.bg}); return; }
+      const on=Math.floor(t*p.rate)%2===0; g.fillStyle=on?C:(p.bg||'#000000'); g.fillRect(0,0,W,H);   // flash (pixels, when global Render isn't Native)
+      if(on) drawSpanLine(g,W,H,p.text||'','#ffffff',null,'serif',130); },
+    led(t,p,k,n){ if(p.layout==='flash'){ const on=Math.floor(t*p.rate)%2===0; return on?this._rgb(p):{r:0,g:0,b:0}; } return this._rgb(p); } },
 
   pong:{ name:'🏓 Pong', kind:'span',
     desc:'A ball bounces across the tubes between two auto-paddles — primitive shapes + colours, pure pixels. Sliced per tube, the ball hops tube to tube.',
@@ -2670,6 +2671,27 @@ const ANIM_ORDER=['marquee','bigclock','calendar','progress','sparkline','ticker
 
 function roundRect(g,x,y,w,h,r){ r=Math.min(r,w/2,h/2); g.beginPath(); g.moveTo(x+r,y); g.arcTo(x+w,y,x+w,y+h,r);
   g.arcTo(x+w,y+h,x,y+h,r); g.arcTo(x,y+h,x,y,r); g.arcTo(x,y,x+w,y,r); g.closePath(); }
+
+/* ---- Reusable CARD render: a masthead/label + big serif body. One primitive for the
+   newspaper headline, an alert banner, and future summarized content. Two forms:
+   drawCardSpan = one card across the whole screen; drawCardTubes = one card per tube. ---- */
+function drawCardSpan(g,W,H,{label,body,color,bg,sub}={}){
+  g.fillStyle=bg||'#0b1020'; g.fillRect(0,0,W,H);
+  if(label){ g.fillStyle=color||'#ffd166'; g.textAlign='left'; g.textBaseline='alphabetic'; g.font=`900 ${Math.round(H*0.13)}px ${fontStack('serif')}`; g.fillText(String(label).toUpperCase(),18,H*0.16);
+    g.strokeStyle=(color||'#ffffff')+'88'; g.lineWidth=3; g.beginPath(); g.moveTo(14,H*0.20); g.lineTo(W-14,H*0.20); g.stroke(); }
+  drawFittedText(g,String(body||''),{x:W/2,y:label?H*0.60:H/2,maxW:W-40,maxH:label?H*0.62:H-28,size:Math.round(H*0.34),font:fontStack('serif'),color:'#ffffff',weight:'800'});
+  if(sub){ g.fillStyle='#8b93a3'; g.textAlign='right'; g.textBaseline='alphabetic'; g.font=`600 ${Math.round(H*0.09)}px ${fontStack('sans')}`; g.fillText(String(sub),W-16,H-12); }
+}
+function drawCardTubes(g,W,H,{items=[],labels=null,color,bg}={}){
+  const n=Math.max(1,Math.round(W/CW));
+  for(let k=0;k<n;k++){ const x0=k*CW, it=items.length?items[k%items.length]:'';
+    g.fillStyle=k%2?(bg||'#0b1020'):'#0e1730'; g.fillRect(x0,0,CW,H);
+    g.strokeStyle=(color||'#ffffff')+'55'; g.lineWidth=2; g.strokeRect(x0+3,3,CW-6,H-6);
+    if(labels){ const lab=labels[k%labels.length]; if(lab){ g.fillStyle=color||'#ffd166'; g.textAlign='left'; g.textBaseline='top'; g.font=`800 15px ${fontStack('serif')}`; g.fillText(String(lab),x0+8,8); } }
+    drawFittedText(g,String(it),{x:x0+CW/2,y:H*0.56,maxW:CW-14,maxH:H*0.66,size:34,font:fontStack('serif'),color:'#ffffff',weight:'700'}); }
+}
+function splitCards(text,n){ const w=String(text||'').trim().split(/\s+/).filter(Boolean), out=Array(n).fill(''); if(!w.length) return out;
+  const per=Math.ceil(w.length/n); for(let k=0;k<n;k++) out[k]=w.slice(k*per,(k+1)*per).join(' '); return out; }
 
 const currentAnim=()=>ANIMS[engine.animId];
 function paramsFromSpec(spec){ const o={}; spec.forEach(f=>o[f.k]=f.def); return o; }

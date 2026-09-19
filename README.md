@@ -18,7 +18,8 @@ web console's renderer:
 | ![Big clock](images/screenshots/bigclock-nixie.png)<br>**Big clock** | ![Countdown](images/screenshots/countdown-nixie.png)<br>**Countdown timer** |
 | ![Month calendar](images/screenshots/calendar.png)<br>**Month calendar** | ![Tube swap](images/screenshots/swap.png)<br>**Per-tube control / swap** |
 | ![Pong](images/screenshots/pong.png)<br>**Pong** — across the tubes | ![Newspaper](images/screenshots/news-paper.png)<br>**Newspaper** — a headline across the screen |
-| ![Newspaper per tube](images/screenshots/news-papertube.png)<br>**Newspaper, per tube** — a headline card on each | |
+| ![Newspaper per tube](images/screenshots/news-papertube.png)<br>**Newspaper, per tube** — a headline card on each | ![Alert banner](images/screenshots/alert-banner.png)<br>**Alert** — level banner (same card pattern) |
+| ![Alert cards](images/screenshots/alert-cards.png)<br>**Alert, per tube** — a card on each | |
 
 Text runs on the device's **native nixie engine** (zero pixels streamed); graphics like pong and the
 per-tube swap push pixels. A built-in web console drives it all — scenes, timed **shows**, and a live
