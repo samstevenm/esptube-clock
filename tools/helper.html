@@ -2410,6 +2410,7 @@ const ANIMS={
       {k:'dim',label:'Weekday row',type:'color',def:'#8b93a3'},
       {k:'accent',label:'Today',type:'color',def:'#ffb454'},
       {k:'bg',label:'Background',type:'color',def:'#0b0f16'} ],
+    bufferKey(p){ const n=new Date(); return 'cal:'+n.getFullYear()+'-'+n.getMonth()+'-'+n.getDate()+':'+p.weekStart+':'+p.color+':'+p.dim+':'+p.accent+':'+p.bg; },   // BUFFER: the month grid changes once a day
     draw(g,W,H,t,p){ const now=new Date(), y=now.getFullYear(), m=now.getMonth(), today=now.getDate();
       g.fillStyle=p.bg; g.fillRect(0,0,W,H); g.textAlign='center'; g.textBaseline='middle';
       const titleH=H*0.16, hdrH=H*0.12, cellW=W/7;
@@ -2493,6 +2494,9 @@ const ANIMS={
       const val=Math.round(st.value*100)/100, up=(st.change||0)>=0;
       const chg=(up?'+':'-')+Math.abs(Math.round((st.change||0)*100)/100)+(st.changeIsPct?'%':'');
       return {effect:nixieCfg.effect, text:fmtNative([st.label||'',val,chg,st.unit||''].join(' ')), ms:nixieCfg.ms}; },
+    bufferKey(p,st){ if(p.display!=='bignum') return null;          // BUFFER: the big-number dashboard changes once per poll; scroll stays native/animated
+      if(!st||st.value==null) return 'tick:bignum:loading:'+((st&&st.err)||'');
+      return 'tick:bignum:'+p.color+':'+p.bg+':'+(st.label||'')+':'+st.value+':'+st.change+':'+(st.unit||''); },
     async poll(p,st){ st.err=''; try{
       if(p.source==='crypto'){ const r=await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(p.cryptoId)}&vs_currencies=${encodeURIComponent(p.cryptoCur)}&include_24hr_change=true`);
         const j=await r.json(); const row=j[p.cryptoId.toLowerCase()]; if(!row) throw new Error('coin not found');
