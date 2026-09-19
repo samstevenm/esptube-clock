@@ -20,7 +20,7 @@
 
   POINT IT AT YOUR CLOCK
   ----------------------
-  Open this file, type the clock IP in the top bar (default <clock-ip>),
+  Open this file, type the clock IP in Settings (default <clock-ip>),
   press Connect.  Remembered in localStorage.  The clock sends
   `Access-Control-Allow-Origin: *`, and file://->http is NOT mixed-content
   blocked, so cross-origin fetch works from a local file.
@@ -174,6 +174,7 @@
   .conn.master{gap:4px}
 
   main{max-width:1180px;margin:0 auto;padding:16px}
+  .top-panel{width:calc(100% - 32px);max-width:1608px;margin:16px auto 0}
 
   button{background:var(--card2);color:var(--txt);border:1px solid var(--line);
     border-radius:9px;padding:8px 12px;font-size:14px;cursor:pointer;
@@ -371,7 +372,7 @@
   /* tube cards keep their PHYSICAL left-to-right order: one row that scrolls, never a reflow that puts tube 3 under tube 5 */
   #grid.grid{grid-auto-flow:column;grid-auto-columns:minmax(228px,1fr);grid-template-columns:none;overflow-x:auto;padding-bottom:6px;scroll-snap-type:x proximity} #grid>.tube{scroll-snap-align:start}
   @media (max-width:820px){ .barcol{min-width:0!important;flex:1 1 100%} .row{gap:6px} }
-  @media (max-width:560px){ .pill{margin-left:0;width:100%} header{padding:10px 12px} main{padding:12px} header h1{font-size:16px} .chip{font-size:11px} }
+  @media (max-width:560px){ .pill{margin-left:0;width:100%} header{padding:10px 12px} main{padding:12px} .top-panel{width:auto;margin:12px 12px 0} header h1{font-size:16px} .chip{font-size:11px} }
 </style>
 <!-- Nixie One (OFL) — the same typeface the firmware's glyph plates are rendered from, so
      canvas nixie text matches the device. Falls back to Helvetica Neue offline. -->
@@ -381,10 +382,6 @@
 <body>
 <header>
   <h1>🕰️ <span>ESP</span>Tube&nbsp;Helper</h1>
-  <div class="conn">
-    <input type="text" id="ip" placeholder="<clock-ip>" spellcheck="false">
-    <button class="mini" id="connectBtn">🔌 Connect</button>
-  </div>
   <div class="conn master">
     <button class="mini" id="pauseBtn" title="Master pause: NOTHING is pushed from this helper (auto-push, cycle, animations, drag, restore) until you resume">⏸ Pause</button>
     <button class="mini" id="stopBtn" title="STOP & CLEAR (Esc): stops everything that paints the tubes — 📹 Live, the bridge, the scene cycle, animations — cancels frames already on their way, and blanks every panel and glow. The one stop button.">🧹 Stop &amp; clear</button>
@@ -392,12 +389,66 @@
     <button class="mini ghost" id="rebootBtn" title="Restart the clock (about 8 s): over the USB cable when it is connected, else over WiFi. Click twice — a stray click can't do it. Its settings, saved WiFi and layout are kept; whatever is on the tubes is not.">🔁 Reboot</button>
     <button class="mini ghost" id="paletteBtn" title="Every action in one searchable list (⌘K / Ctrl+K)">⌘K</button>
   </div>
-  <div class="conn" id="chips" title="Who is painting the tubes · which link carries pixels · the clock's own WiFi signal">
-    <span class="chip dimc" id="chipOwner">—</span><span class="chip dimc" id="chipLink">—</span>
-  </div>
-  <div class="pill"><span id="dot" class="dot"></span><span id="stat">not connected</span></div>
 </header>
 <div id="pausedBar">⏸ <b>PAUSED</b> — this helper is not pushing anything to the clock · <a href="#" id="pausedResume">▶ resume</a></div>
+
+<!-- Browser-wide settings stay together and outside the movable workspace dock. -->
+<section class="panel top-panel">
+  <h2>⚙️ Settings <span class="sub">browser-wide connection, text rendering, keys, and local data</span></h2>
+  <div class="barwrap">
+    <div class="barcol">
+      <span class="lbl">🔌 Connection</span>
+      <div class="row tight">
+        <label class="inl">Clock IP <input type="text" id="ip" placeholder="<clock-ip>" spellcheck="false"></label>
+        <button class="mini primary" id="connectBtn">🔌 Connect</button>
+        <span class="pill"><span id="dot" class="dot"></span><span id="stat">not connected</span></span>
+      </div>
+      <div class="row tight" id="chips" title="Who is painting the tubes · which link carries pixels · the clock's own WiFi signal">
+        <span class="chip dimc" id="chipOwner">—</span><span class="chip dimc" id="chipLink">—</span>
+      </div>
+      <span class="note">The clock IP is remembered in this browser.</span>
+    </div>
+    <div class="barcol">
+      <span class="lbl">🅰️ Global text style</span>
+      <div class="row tight">
+        <label class="inl" title="How text is rendered everywhere. Native = the device's baked nixie glyphs. The other choices are pixel fonts that fit any Tile.">Render
+          <select id="nxStyle"><option value="native">⚡ Native nixie</option><option value="nixie">🕯️ Nixie glow</option><option value="display">🔠 Display</option><option value="mono">🔢 Mono</option><option value="sans">Sans</option><option value="serif">Serif</option></select></label>
+        <label class="inl" title="Motion. Vertical slide and pages are native-only; font styles scroll horizontally.">Effect
+          <select id="nxEffect"><option value="static">Static</option><option value="flash">⚡ Flash</option><option value="scroll">➡️ Scroll</option><option value="vscroll">⬇️ Vertical slide</option><option value="vpage">⏬ Vertical pages</option><option value="scrollstep">➡ Step</option></select></label>
+        <label class="inl" title="Motion rate: flash toggle, scroll glyph-width, or page dwell">Every <input type="number" id="nxMs" value="220" min="60" max="10000" step="20" style="width:60px"> ms</label>
+        <label class="inl" title="Colour for font styles; Native nixie is always warm amber">Colour <input type="color" id="nxColor" value="#ffb454"></label>
+      </div>
+      <span class="note">One browser-global style for messages, Marquee, News, and Ticker on every Tile.</span>
+    </div>
+    <div class="barcol">
+      <span class="lbl">🔑 API keys</span>
+      <div class="row tight">
+        <label class="fld grow">Finnhub · stocks<input type="text" id="keyFinnhub" placeholder="API key" spellcheck="false"></label>
+        <label class="fld grow">rss2json · news, optional<input type="text" id="keyRss" placeholder="API key" spellcheck="false"></label>
+      </div>
+      <span class="note">Saved only in this browser; never sent to the clock.</span>
+    </div>
+    <div class="barcol">
+      <span class="lbl">💾 Browser data</span>
+      <label class="inl"><input type="checkbox" id="restoreLast"> Restore last scene on connect</label>
+      <div class="row tight">
+        <button class="mini" id="backupBtn" title="Download all settings + scenes + images as one file">💾 Backup all</button>
+        <button class="mini" id="restoreBtn" title="Load a backup file">📂 Restore all</button>
+        <button class="mini ghost" id="resetBtn" title="Erase ALL helper data on this browser" style="border-color:var(--bad)">🧨 Reset all</button>
+        <input type="file" id="restoreFile" accept="application/json,.json" hidden>
+      </div>
+      <span class="note" id="lsUsage">🗄️ —</span>
+      <span class="note">Restore last re-pushes after a restart; leave it off to let the clock's own face win.</span>
+    </div>
+  </div>
+  <details class="tools">
+    <summary>ℹ️ Where browser data is saved</summary>
+    <div class="note">Scenes autosave as you edit and live in this browser — images in <b>IndexedDB</b>
+      (large, de-duplicated), only tiny refs in localStorage, so storage no longer fills up. 💾 Backup all
+      makes one portable file of everything (settings + scenes + images + keys); 🧨 Reset all wipes this
+      browser's helper data.</div>
+  </details>
+</section>
 
 <main class="dock">
   <div id="dockBar"></div>
@@ -410,9 +461,9 @@
     for designing scenes offline.
     <button class="tiny" onclick="this.parentElement.hidden=true">dismiss</button>
   </div>
-  <!-- ===================== GLOBAL CONTROL BAR ===================== -->
+  <!-- ===================== DEVICE CONTROLS ===================== -->
   <div class="panel">
-    <h2>🎛️ Clock controls <span class="sub" id="clockmeta"></span></h2>
+    <h2>🕰️ Device <span class="sub">controls and configuration saved on the clock · <span id="clockmeta"></span></span><span hidden>Clock controls</span></h2>
     <div class="barwrap">
       <div class="barcol">
         <span class="lbl">🎭 Device face <span class="note" style="margin:0">— what the clock shows by itself · the physical MODE button cycles these</span></span>
@@ -427,18 +478,10 @@
           <span id="handsOffInd" style="display:none;color:var(--amber)">· 🔌 auto-push paused <a href="#" id="handsOffResume" title="Let auto-push widgets and restore-on-connect push again">resume</a></span></span>
       </div>
       <div class="barcol">
-        <span class="lbl">🅰️ TEXT STYLE <span class="note" style="margin:0">— ONE global setting, used everywhere text renders (this message · Marquee · News · Ticker). Native nixie on tubes, or a font for big screens.</span></span>
+        <span class="lbl">💬 Message &amp; countdown</span>
         <div class="row tight">
           <input type="text" id="nxText" placeholder="HELLO WORLD" maxlength="240" class="grow" spellcheck="false">
           <button class="mini primary" id="nxShow" title="Show this message on the clock, in the global text style">📣 Show</button>
-        </div>
-        <div class="row tight">
-          <label class="inl" title="How text is rendered everywhere. Native = the device's baked nixie glyphs (tubes, zero pixels). The others are pixel fonts that fit any panel — good for TVs / big displays.">Render
-            <select id="nxStyle"><option value="native">⚡ Native nixie</option><option value="nixie">🕯️ Nixie glow</option><option value="display">🔠 Display</option><option value="mono">🔢 Mono</option><option value="sans">Sans</option><option value="serif">Serif</option></select></label>
-          <label class="inl" title="Motion. Vertical slide / pages are native-only; font styles scroll horizontally.">Motion
-            <select id="nxEffect"><option value="static">Static</option><option value="flash">⚡ Flash</option><option value="scroll">➡️ Scroll</option><option value="vscroll">⬇️ Vertical slide</option><option value="vpage">⏬ Vertical pages</option><option value="scrollstep">➡ Step</option></select></label>
-          <label class="inl" title="motion rate: flash toggle · scroll glyph-width · page dwell">every <input type="number" id="nxMs" value="220" min="60" max="10000" step="20" style="width:60px"> ms</label>
-          <label class="inl" title="Colour for the font styles (Native nixie is always warm amber)">Colour <input type="color" id="nxColor" value="#ffb454"></label>
         </div>
         <div class="row tight">
           <label class="inl" title="how long">⏳ <input type="number" id="nxSecs" value="90" min="1" max="359999" style="width:72px"> s</label>
@@ -473,7 +516,7 @@
       </div>
     </div>
     <details class="tools" style="margin-top:10px">
-      <summary>⚙️ Setup &amp; advanced <span class="note" style="margin:0;text-transform:none;letter-spacing:0">— timezone · working tubes · raw display mode · virtual buttons</span></summary>
+      <summary>⚙️ Device setup &amp; advanced <span class="note" style="margin:0;text-transform:none;letter-spacing:0">— timezone · WiFi · working tubes · raw display mode · physical buttons</span></summary>
       <div class="barwrap" style="margin-top:10px">
         <div class="barcol" style="min-width:260px">
           <span class="lbl">🌍 Timezone (POSIX TZ, saved on device)</span>
@@ -744,28 +787,6 @@ python3 tools/bridge/bridge.py serve         # leave it running; this panel take
       <textarea id="showEditText" rows="8" class="mono" style="width:100%;box-sizing:border-box;font-size:12px" spellcheck="false" placeholder='{"app":"esptube-show","v":1,"name":"...","steps":[{"act":"nixie","dur":5,"effect":"scroll","text":"HELLO"}]}'></textarea>
     </details>
     <div class="note">A <b>show</b> is a timed cue-list (<code>esptube-show</code> JSON): each step is a native-nixie / face / LED / animation action with a duration — the SMIL / cue-list seq model. Saved in this browser; import & export as text.</div>
-    <hr class="divider">
-    <div class="row tight">
-      <label class="inl"><input type="checkbox" id="restoreLast"> 🔁 Restore last scene on connect</label>
-      <span class="note" style="margin:0">re-pushes after the clock restarts — off (default) = the clock's own 🕯️ face wins</span>
-      <span style="flex:1"></span>
-      <button class="mini" id="backupBtn" title="Download all settings + scenes + images as one file">💾 Backup all</button>
-      <button class="mini" id="restoreBtn" title="Load a backup file">📂 Restore all</button>
-      <button class="mini ghost" id="resetBtn" title="Erase ALL helper data on this browser" style="border-color:var(--bad)">🧨 Reset all</button>
-      <input type="file" id="restoreFile" accept="application/json,.json" style="display:none">
-    </div>
-    <div class="row tight" style="margin-top:8px">
-      <span class="lbl" style="margin:0">🔑 API keys</span>
-      <input type="text" id="keyFinnhub" placeholder="Finnhub key (stocks)" class="grow" style="min-width:130px" spellcheck="false">
-      <input type="text" id="keyRss" placeholder="rss2json key (news · optional)" class="grow" style="min-width:130px" spellcheck="false">
-      <span class="note" id="lsUsage" style="margin:0;white-space:nowrap">🗄️ —</span>
-    </div>
-    <details class="tools"><summary>ℹ️ Where things are saved</summary>
-    <div class="note">Scenes autosave as you edit and live in this browser — images in <b>IndexedDB</b>
-      (large, de-duplicated), only tiny refs in localStorage, so storage no longer fills up. 💾 Backup all
-      makes one portable file of everything (settings + scenes + images + keys); 🧨 Reset all wipes this
-      browser's helper data. Free API keys are saved locally only (never pushed to the clock or GitHub).</div>
-    </details>
   </div>
 
   <!-- ===================== TUBE GRID ===================== -->
