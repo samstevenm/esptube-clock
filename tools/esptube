@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+"""esptube — command-line control for the SI HAI IPS tube clock's REST API.
+
+No external dependencies (stdlib urllib). Talks to the clock's HTTP server.
+
+Clock address resolution (first that is set wins):
+  1. --ip / -i argument
+  2. $ESPTUBE_IP environment variable
+  3. default: esptube.local   (falls back nicely if mDNS works on your network)
+
+Examples:
+  esptube status                       # pretty-print /status
+  esptube health                       # quick liveness check
+  esptube text 0 HI                    # draw "HI" on tube 0 (0 = far right)
+  esptube rgb 0 255 0 0                # tube 0 underglow -> red
+  esptube image 3 face.bmp             # blit a 24/8-bit BMP to tube 3
+  esptube clear                        # blank all tubes
+  esptube button mode                  # inject a virtual button press
+  esptube preset next                  # cycle the device face (0 nixie · 1 digital · 2 ledshow · 3 off · 4 date)
+  esptube nixie "HELLO WORLD" --effect scroll --ms 350   # message in nixie letters, drawn by the clock
+  esptube countdown 90                 # countdown on the clock, then back to the time
+  esptube stop                         # end a message/countdown -> clock
+  esptube led rainbow                  # underglow effect (off|solid|rainbow|breathe|comet)
+  esptube mode clock                   # raw display mode (clock|off|manual)
+  esptube brightness 200               # 0-255 (dims the nixie face + underglow)
+  esptube reboot                       # restart the clock
+  esptube -i <clock-ip> status     # target a specific IP
+
+Tube index: 0 is the far-RIGHT tube; index increases to the left. Dead/empty
+positions are skipped automatically by the firmware (see `status` -> dead_tubes).
+"""
+import argparse, json, os, sys, urllib.request, urllib.error
+
+DEFAULT_HOST = os.environ.get("ESPTUBE_IP", "esptube.local")
+TIMEOUT = 8
+
+
+def url(host, path):
+    return f"http://{host}{path}"
+
+
+def req(host, path, method="GET", body=None, ctype="application/json"):
+    data = body.encode() if isinstance(body, str) else body
+    r = urllib.request.Request(url(host, path), data=data, method=method)
+    if data is not None:
+        r.add_header("Content-Type", ctype)
+    try:
+        with urllib.request.urlopen(r, timeout=TIMEOUT) as resp:
+            return resp.status, resp.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode("utf-8", "replace")
+    except (urllib.error.URLError, OSError) as e:
+        print(f"error: cannot reach clock at {host}: {e}", file=sys.stderr)
+        sys.exit(2)
+
+
+def show(status, text):
+    try:
+        print(json.dumps(json.loads(text), indent=2))
+    except Exception:
+        print(text)
+    if status >= 400:
+        sys.exit(1)
+
+
+def main():
+    p = argparse.ArgumentParser(prog="esptube", description="Control the tube clock over HTTP REST.")
+    p.add_argument("-i", "--ip", default=DEFAULT_HOST, help=f"clock host/IP (default {DEFAULT_HOST})")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    sub.add_parser("status", help="GET /status")
+    sub.add_parser("health", help="GET /health")
+    sub.add_parser("clear", help="POST /tubes/clear")
+
+    t = sub.add_parser("text", help="draw text on a tube"); t.add_argument("tube", type=int); t.add_argument("text")
+    c = sub.add_parser("rgb", help="set a tube's underglow color"); c.add_argument("tube", type=int)
+    c.add_argument("r", type=int); c.add_argument("g", type=int); c.add_argument("b", type=int)
+    im = sub.add_parser("image", help="blit a BMP (24/8-bit) to a tube"); im.add_argument("tube", type=int); im.add_argument("file")
+    b = sub.add_parser("button", help="inject a virtual button"); b.add_argument("name", choices=["mode", "up", "down", "power", "left", "right"])
+    pr = sub.add_parser("preset", help="device face: next or 0-4"); pr.add_argument("which", help="next | 0 nixie | 1 digital | 2 ledshow | 3 off | 4 date")
+    nx = sub.add_parser("nixie", help="show a message in nixie letters (drawn by the clock)")
+    nx.add_argument("text"); nx.add_argument("--effect", choices=["static", "flash", "scroll"], default="static")
+    nx.add_argument("--ms", type=int, default=400, help="flash/scroll step in ms")
+    cd = sub.add_parser("countdown", help="countdown on the clock, then back to the time"); cd.add_argument("seconds", type=int)
+    sub.add_parser("stop", help="end a nixie message/countdown -> clock")
+    ld = sub.add_parser("led", help="underglow effect"); ld.add_argument("effect", choices=["off", "solid", "rainbow", "breathe", "comet"])
+    ld.add_argument("rgb", nargs="*", type=int, help="r g b for solid")
+    md = sub.add_parser("mode", help="raw display mode"); md.add_argument("mode", choices=["clock", "off", "manual"])
+    br = sub.add_parser("brightness", help="0-255"); br.add_argument("value", type=int)
+    sub.add_parser("reboot", help="POST /reboot")
+
+    a = p.parse_args()
+    h = a.ip
+
+    if a.cmd == "status":   show(*req(h, "/status"))
+    elif a.cmd == "health": show(*req(h, "/health"))
+    elif a.cmd == "clear":  show(*req(h, "/tubes/clear", "POST"))
+    elif a.cmd == "preset": show(*req(h, f"/preset/{a.which}", "POST"))
+    elif a.cmd == "nixie":  show(*req(h, "/nixie/text", "POST", json.dumps({"text": a.text, "effect": a.effect, "ms": a.ms})))
+    elif a.cmd == "countdown": show(*req(h, "/nixie/countdown", "POST", json.dumps({"seconds": a.seconds})))
+    elif a.cmd == "stop":   show(*req(h, "/nixie/stop", "POST"))
+    elif a.cmd == "led":
+        body = json.dumps(dict(zip("rgb", a.rgb))) if (a.effect == "solid" and len(a.rgb) == 3) else None
+        show(*req(h, f"/led/{a.effect}", "POST", body))
+    elif a.cmd == "mode":   show(*req(h, f"/mode/{a.mode}", "POST"))
+    elif a.cmd == "brightness": show(*req(h, "/config/brightness", "POST", json.dumps({"value": max(0, min(255, a.value))})))
+    elif a.cmd == "reboot": show(*req(h, "/reboot", "POST"))
+    elif a.cmd == "text":   show(*req(h, f"/tube/{a.tube}/text", "POST", a.text, "text/plain"))
+    elif a.cmd == "rgb":
+        clamp = lambda v: max(0, min(255, v))
+        body = json.dumps({"r": clamp(a.r), "g": clamp(a.g), "b": clamp(a.b)})
+        show(*req(h, f"/tube/{a.tube}/rgb", "POST", body))
+    elif a.cmd == "image":
+        with open(a.file, "rb") as f: data = f.read()
+        show(*req(h, f"/tube/{a.tube}/image", "POST", data, "application/octet-stream"))
+    elif a.cmd == "button": show(*req(h, f"/button/{a.name}", "POST"))
+
+
+if __name__ == "__main__":
+    main()

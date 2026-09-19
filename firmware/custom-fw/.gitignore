@@ -1,0 +1,16 @@
+# PlatformIO build output & local libs
+.pio/
+
+# Secrets (real WiFi credentials)
+include/secrets.h
+secrets.h
+
+# Firmware binaries
+*.bin
+
+# Auto-generated (embedded UI); regenerated from data/index.html each build
+src/web_index.h
+
+# Editor / OS cruft
+.vscode/
+.DS_Store

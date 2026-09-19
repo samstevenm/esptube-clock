@@ -1,0 +1,23 @@
+# build artifacts (build_dir is external; ignore any local .pio too)
+.pio/
+# generated at build time from data/index.html
+firmware/custom-fw/src/web_index.h
+firmware/custom-fw/src/web_helper.h
+firmware/custom-fw/src/web_icon.h
+firmware/custom-fw/src/build_stamp.h
+# secrets (WiFi creds live in device NVS, not here)
+firmware/custom-fw/include/secrets.h
+secrets/
+*.env
+!*.env.example
+# large / regenerable binaries (kept in iCloud, not git): flash backups, built images
+*.bin
+.DS_Store
+# local editor/agent tooling
+.claude/
+
+# recovery image for the web flasher (tracked despite *.bin)
+!webflasher/firmware.merged.bin
+
+# python bytecode
+__pycache__/

@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ESPTube Control</title>
+<style>
+  :root{--bg:#0c0e13;--card:#161a22;--card2:#1e2430;--line:#2a3140;--txt:#e8ebf0;--dim:#8b93a3;--amber:#ffb454;--ok:#3ecf8e;--bad:#ff6b6b;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  header{position:sticky;top:0;background:linear-gradient(#0c0e13,#0c0e13ee);backdrop-filter:blur(6px);border-bottom:1px solid var(--line);padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  header h1{font-size:18px;margin:0;letter-spacing:.5px}
+  header h1 span{color:var(--amber);text-shadow:0 0 12px #ffb45455}
+  .pill{margin-left:auto;font-size:12px;color:var(--dim);display:flex;align-items:center;gap:6px}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--bad);box-shadow:0 0 8px var(--bad)}
+  .dot.on{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+  main{max-width:960px;margin:0 auto;padding:16px}
+  .banner{background:#20283a;border:1px solid var(--amber);border-radius:12px;padding:12px 14px;margin-bottom:16px;font-size:14px}
+  .banner b{color:var(--amber)}
+  .banner code{background:#0d1017;border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+  .bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+  button{background:var(--card2);color:var(--txt);border:1px solid var(--line);border-radius:9px;padding:9px 13px;font-size:14px;cursor:pointer}
+  button:hover{border-color:var(--amber)}
+  button.primary{background:var(--amber);color:#201400;border-color:var(--amber);font-weight:600}
+  button.ghost{background:transparent}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+  .tube{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:9px}
+  .tube.off{opacity:.45}
+  .tube h3{margin:0;font-size:13px;color:var(--dim);display:flex;align-items:center;justify-content:space-between}
+  .tube h3 b{color:var(--txt);font-size:15px}
+  .row{display:flex;gap:6px;align-items:center}
+  input[type=text]{flex:1;min-width:0;background:#0d1017;border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px 9px;font-size:14px}
+  input[type=color]{width:38px;height:38px;padding:0;border:1px solid var(--line);border-radius:8px;background:#0d1017}
+  .mini{padding:7px 9px;font-size:13px}
+  label.sw{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dim);cursor:pointer}
+  .sec{margin-top:22px}
+  .sec h2{font-size:14px;color:var(--amber);border-bottom:1px solid var(--line);padding-bottom:6px}
+  .pops{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+  .note{font-size:12px;color:var(--dim);margin:6px 0 12px}
+  #toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--card2);border:1px solid var(--line);padding:9px 14px;border-radius:10px;font-size:13px;opacity:0;transition:.2s;pointer-events:none}
+  #toast.show{opacity:1}
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ESP</span>Tube&nbsp;Control</h1>
+  <div class="pill"><span id="dot" class="dot"></span><span id="stat">connecting…</span></div>
+</header>
+<main>
+  <div class="banner">
+    <b>Built-in fallback UI.</b> The full console — widgets, characters, live video, scenes, WiFi setup —
+    is served by the clock too: <a href="/helper" style="color:var(--amber)"><b>open the ESPTube Helper</b></a>. For <b>camera / screen / tab capture</b> run <code>python3 tools/console.py</code> on your computer and use <code>http://localhost:8765</code> — browsers only allow capture on a secure page, and this one is plain http.
+    On an iPhone: open it in Safari, Share → <b>Add to Home Screen</b>, and it runs as an app (works on the
+    clock's own hotspot with no internet).
+  </div>
+
+  <div class="bar">
+    <button class="primary" onclick="clearAll()">Clear all</button>
+    <button onclick="refresh()">Refresh</button>
+    <button id="rebootBtn" onclick="rebootClock(this)" style="margin-left:auto;border-color:#ff6b6b;color:#ff9b9b;font-weight:700" title="Restart the clock (about 8 seconds). Click twice.">🔁 Reboot clock</button>
+  </div>
+
+  <div id="grid" class="grid"></div>
+  <div class="note">Text uses a basic built-in font — emoji &amp; rich fonts aren't supported here; use <code>tools/helper.html</code> for those (and for images).</div>
+
+  <div class="sec">
+    <h2>Device face &amp; nixie message</h2>
+    <div class="pops" style="gap:8px">
+      <span class="note" style="margin:0">Face (MODE button cycles these):</span>
+      <button class="mini" onclick="setPreset(0)">🕯️ Nixie</button>
+      <button class="mini" onclick="setPreset(1)">Digital</button>
+      <button class="mini" onclick="setPreset(2)">LED show</button>
+      <button class="mini ghost" onclick="setPreset(3)">Off</button>
+      <button class="mini" onclick="setPreset(4)">📅 Date</button>
+      <button class="mini ghost" onclick="setPreset('next')">Next ▸</button>
+      <b id="presetind" style="color:var(--amber)">—</b>
+    </div>
+    <div class="row" style="margin-top:10px;flex-wrap:wrap">
+      <input type="text" id="nxText" placeholder="HELLO WORLD" maxlength="80" style="min-width:160px">
+      <select id="nxEffect" style="background:#0d1017;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:8px"><option value="static">Static</option><option value="flash">Flash</option><option value="scroll">Scroll</option></select>
+      <label class="sw">every <input type="number" id="nxMs" value="400" min="60" max="10000" step="20" style="width:64px"> ms</label>
+      <button class="mini primary" onclick="nixieShow()">Show</button>
+    </div>
+    <div class="row" style="margin-top:6px;flex-wrap:wrap">
+      <label class="sw"><input type="number" id="nxSecs" value="90" min="1" max="359999" style="width:72px"> s</label>
+      <button class="mini" onclick="nixieCountdown()">Countdown</button>
+      <button class="mini ghost" onclick="nixieStop()">Back to clock</button>
+    </div>
+    <div class="note">The clock draws messages itself in nixie letters (A–Z 0–9 - : . ! ? ° % + /) — nothing is pushed.</div>
+  </div>
+
+  <div class="sec">
+    <h2>Display &amp; underglow</h2>
+    <div class="pops" style="gap:8px">
+      <span class="note" style="margin:0">Panels:</span>
+      <button class="mini" onclick="setMode('clock')">Clock</button>
+      <button class="mini ghost" onclick="setMode('off')">Off</button>
+      <b id="modeind" style="color:var(--amber)">—</b>
+    </div>
+    <div class="pops" style="gap:8px;margin-top:10px">
+      <span class="note" style="margin:0">LED effect:</span>
+      <button class="mini ghost" onclick="setLed('off')">Off</button>
+      <input type="color" id="ledsolid" value="#ff8c28" title="solid color">
+      <button class="mini" onclick="setLedSolid()">Solid</button>
+      <button class="mini" onclick="setLed('rainbow')">Rainbow</button>
+      <button class="mini" onclick="setLed('breathe')">Breathe</button>
+      <button class="mini" onclick="setLed('comet')">Comet</button>
+      <b id="ledind" style="color:var(--amber)">—</b>
+    </div>
+    <label class="sw" style="gap:8px;color:var(--txt);margin-top:10px">Brightness
+      <input type="range" id="bright" min="0" max="255" value="180"
+             oninput="brightLabel(this.value)" onchange="setBright(this.value)">
+      <span id="brightval" class="note" style="margin:0">180</span>
+    </label>
+    <div class="note">The LED effect runs on the underglow independently — e.g. Clock on the panels + Rainbow glow at the same time. Per-tube "Glow" works when the effect is Off or Solid.</div>
+  </div>
+
+  <div class="sec" id="wifiSec">
+    <h2>WiFi</h2>
+    <div class="note" id="wifiStat" style="margin:0 0 8px">…</div>
+    <div class="banner" id="apBanner" style="display:none"><b>You're on the clock's own network</b> (<code>esptube-setup</code>).
+      Pick your WiFi below and enter its password — the clock joins it, remembers it, and drops this hotspot ~90 s later.
+      Then find it on your network as <code>http://esptube.local</code>.</div>
+    <div class="row" style="flex-wrap:wrap;gap:8px">
+      <button class="mini" onclick="wifiScan()">Scan</button>
+      <button class="mini ghost" onclick="wifiAp(true)" title="Host the clock's own network esptube-setup at 192.168.4.1">Recovery hotspot on</button>
+      <button class="mini ghost" onclick="wifiAp(false)">off</button>
+      <button class="mini ghost" onclick="wifiReconnect()" title="Rescan and join the strongest saved network">Reconnect</button>
+    </div>
+    <div id="wifiScan" class="note" style="margin:8px 0 0"></div>
+    <div class="row" style="margin-top:8px;flex-wrap:wrap">
+      <input type="text" id="wfSsid" placeholder="network name (SSID)" maxlength="32" style="min-width:160px">
+      <input type="password" id="wfPass" placeholder="password" maxlength="63" style="flex:1;min-width:140px;background:#0d1017;border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px 9px;font-size:14px">
+      <button class="mini primary" onclick="wifiAdd()">Join &amp; remember</button>
+    </div>
+    <div class="note">Saved networks (the clock joins the strongest one it can see; up to 8):</div>
+    <div id="wifiSaved" class="pops" style="gap:8px"></div>
+    <div class="note" style="margin-top:8px">Recovery hotspot: <code>esptube-setup</code> · password <code id="apPass">—</code> · <code>192.168.4.1</code>.
+      It comes up by itself when no saved network is in range (a move, a new router, an outage), and from the clock's menu (long-press MODE → AP).
+      Everything else — the clock, faces, messages, the USB shell — works with no WiFi at all.</div>
+  </div>
+
+  <div class="sec">
+    <h2>Which tubes are populated</h2>
+    <div class="note">Tell the clock which slots have a working panel. Saved on the device. Slot 0 = far right.</div>
+    <div id="pops" class="pops"></div>
+    <div style="margin-top:12px"><button class="primary" onclick="savePop()">Save layout</button></div>
+  </div>
+</main>
+<div id="toast"></div>
+
+<script>
+const NTUBE=6;
+// display order left->right: index 5,4,3,2,1,0 (0 = far RIGHT, native)
+const ORDER=[5,4,3,2,1,0];
+let populated=new Array(NTUBE).fill(true);
+let synced=false;   // sync checkboxes from the device once, so polls don't clobber edits
+
+const $=s=>document.querySelector(s);
+async function rebootClock(b){ if(!b._armed){ b._armed=true; b.textContent='Sure? click again'; setTimeout(()=>{ b._armed=false; b.textContent='🔁 Reboot clock'; },3000); return; }
+  b._armed=false; b.disabled=true; b.textContent='rebooting…'; try{ await fetch('/reboot',{method:'POST'}); }catch(e){}
+  toast('rebooting — back in about 8 seconds'); const t0=Date.now();
+  const iv=setInterval(async()=>{ try{ const r=await fetch('/ping',{cache:'no-store'}); if(r.ok){ clearInterval(iv); b.disabled=false; b.textContent='🔁 Reboot clock'; toast('the clock is back ('+Math.round((Date.now()-t0)/1000)+' s)'); refresh(); } }catch(e){} if(Date.now()-t0>40000){ clearInterval(iv); b.disabled=false; b.textContent='🔁 Reboot clock'; } },1500); }
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),1600);}
+async function api(path,opt){try{const r=await fetch(path,opt);return r.ok?r:Promise.reject(r.status);}catch(e){toast('⚠ '+path+' failed');throw e;}}
+function hexToRgb(h){return{r:parseInt(h.slice(1,3),16),g:parseInt(h.slice(3,5),16),b:parseInt(h.slice(5,7),16)};}
+
+async function sendText(i){const v=document.getElementById('t'+i).value;await api('/tube/'+i+'/text',{method:'POST',headers:{'Content-Type':'text/plain'},body:v});toast('tube '+i+' ← "'+v+'"');}
+async function sendRgb(i){const c=hexToRgb(document.getElementById('c'+i).value);await api('/tube/'+i+'/rgb',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(c)});toast('tube '+i+' glow set');}
+async function clearTube(i){await api('/tube/'+i+'/text',{method:'POST',headers:{'Content-Type':'text/plain'},body:''});await api('/tube/'+i+'/rgb',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"r":0,"g":0,"b":0}'});toast('tube '+i+' cleared');}
+async function clearAll(){await api('/tubes/clear',{method:'POST'});toast('all cleared');}
+async function setMode(m){await api('/mode/'+m,{method:'POST'});toast('display: '+m);setTimeout(refresh,150);}
+async function setLed(e){await api('/led/'+e,{method:'POST'});toast('LED: '+e);setTimeout(refresh,150);}
+async function setLedSolid(){const c=hexToRgb($('#ledsolid').value);await api('/led/solid',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(c)});toast('LED: solid');setTimeout(refresh,150);}
+async function setPreset(p){await api('/preset/'+p,{method:'POST'});toast('face: '+p);setTimeout(refresh,150);}
+async function nixieShow(){const text=$('#nxText').value;if(!text.trim()){toast('type a message');return;}
+  await api('/nixie/text',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,effect:$('#nxEffect').value,ms:+$('#nxMs').value||400})});toast('showing');setTimeout(refresh,150);}
+async function nixieCountdown(){const s=Math.max(1,+$('#nxSecs').value||60);await api('/nixie/countdown',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({seconds:s})});toast('countdown '+s+' s');setTimeout(refresh,150);}
+async function nixieStop(){await api('/nixie/stop',{method:'POST'});toast('back to clock');setTimeout(refresh,150);}
+function brightLabel(v){$('#brightval').textContent=v;}
+async function setBright(v){await api('/config/brightness',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({value:+v})});toast('brightness '+v);}
+
+function render(){
+  const g=$('#grid');g.innerHTML='';
+  for(const i of ORDER){
+    const on=populated[i];
+    const d=document.createElement('div');d.className='tube'+(on?'':' off');
+    d.innerHTML=`<h3><b>Tube ${i}</b>${i===0?'far right':(i===5?'far left':'')}</h3>
+      <div class="row"><input type="text" id="t${i}" placeholder="text…" maxlength="8"><button class="mini" onclick="sendText(${i})">Draw</button></div>
+      <div class="row"><input type="color" id="c${i}" value="#ffb454"><button class="mini" onclick="sendRgb(${i})">Glow</button>
+        <button class="mini ghost" onclick="clearTube(${i})">Clear</button></div>`;
+    g.appendChild(d);
+  }
+  const p=$('#pops');p.innerHTML='';
+  for(const i of ORDER){
+    const l=document.createElement('label');l.className='sw';
+    l.innerHTML=`<input type="checkbox" ${populated[i]?'checked':''} onchange="populated[${i}]=this.checked"> Tube ${i}`;
+    p.appendChild(l);
+  }
+}
+async function savePop(){
+  let mask=0;for(let i=0;i<NTUBE;i++)if(populated[i])mask|=(1<<i);
+  await api('/config/populated',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mask})});
+  toast('layout saved');render();
+}
+async function refresh(){
+  try{
+    const r=await fetch('/status');const s=await r.json();   // GET only — never pushes content
+    const clk=('time_valid'in s)?(s.time_valid?'':' · NTP…'):'';
+    $('#dot').classList.add('on');$('#stat').textContent=(s.ip||'')+' · heap '+Math.round((s.free_heap||0)/1024)+'k'+clk;
+    if(!synced && Array.isArray(s.tubes)){
+      s.tubes.forEach(t=>{populated[t.index]=('populated'in t)?t.populated:t.alive;});
+      render();synced=true;
+    }
+    if('mode'in s)$('#modeind').textContent=s.mode+(s.mode==='nixie'&&s.nixie?(s.nixie.kind==='countdown'?' ⏳ '+s.nixie.remaining+'s':' “'+s.nixie.text+'”'):'');
+    if('preset_name'in s)$('#presetind').textContent=s.preset_name;
+    if('led_effect'in s)$('#ledind').textContent=s.led_effect;
+    const bt=$('#bright');
+    if('brightness'in s && document.activeElement!==bt){bt.value=s.brightness;brightLabel(s.brightness);}
+  }catch(e){$('#dot').classList.remove('on');$('#stat').textContent='offline';}
+}
+// ---- WiFi: status / scan / join / forget / recovery hotspot (passwords are sent to the clock, never stored here) ----
+let wifiScanStamp=0;
+function bars(r){return r>-55?'▂▄▆█':r>-65?'▂▄▆':r>-75?'▂▄':'▂';}
+async function wifiRefresh(){try{const r=await fetch('/wifi');const w=await r.json();
+  $('#wifiStat').textContent=w.connected?('Connected to "'+w.ssid+'" · '+w.ip+' · '+w.rssi+' dBm'):('Not connected ('+w.state+')')+(w.ap?' · hotspot esptube-setup is UP ('+w.ap_clients+' device'+(w.ap_clients===1?'':'s')+' on it)':'');
+  $('#apBanner').style.display=(w.ap&&location.hostname==='192.168.4.1')?'':'none';$('#apPass').textContent=w.ap_pass||'(open)';
+  const sv=$('#wifiSaved');sv.innerHTML='';(w.saved||[]).forEach(s=>{const d=document.createElement('span');d.className='row';
+    d.innerHTML=`<b style="font-weight:500">${esc(s)}</b>${w.ssid===s?' <span style="color:var(--ok)">● joined</span>':''} <button class="mini" onclick="wifiJoin('${js(s)}')">join</button><button class="mini ghost" onclick="wifiForget('${js(s)}')">forget</button>`;sv.appendChild(d);});
+  if(!w.saved||!w.saved.length)sv.innerHTML='<span class="note" style="margin:0">none yet</span>';
+  if(w.scan&&w.scan.length&&w.scan_age_s!==wifiScanStamp){const sc=$('#wifiScan');sc.innerHTML='';
+    w.scan.sort((a,b)=>b.rssi-a.rssi).forEach(n=>{const d=document.createElement('div');d.className='row';d.style.margin='2px 0';
+      d.innerHTML=`<span style="min-width:200px">${esc(n.ssid)||'(hidden)'}</span><span class="note" style="margin:0;min-width:80px">${bars(n.rssi)} ${n.rssi} dBm</span>${n.enc?'🔒':'open'}${n.known?' <span style="color:var(--ok)">saved</span>':''} <button class="mini" onclick="wifiPick('${js(n.ssid)}',${n.known})">${n.known?'join':'use'}</button>`;sc.appendChild(d);});}
+}catch(e){$('#wifiStat').textContent='WiFi status unavailable';}}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function js(s){return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");}
+async function wifiScan(){$('#wifiScan').textContent='scanning…';await api('/wifi/scan',{method:'POST'});wifiScanStamp=-1;await wifiRefresh();}
+function wifiPick(ssid,known){if(known){wifiJoin(ssid);return;}$('#wfSsid').value=ssid;$('#wfPass').focus();toast('enter the password, then Join');}
+async function wifiAdd(){const ssid=$('#wfSsid').value.trim(),pass=$('#wfPass').value;if(!ssid){toast('network name?');return;}
+  await api('/wifi/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid,pass})});$('#wfPass').value='';toast('joining '+ssid+' — the clock remembers it');setTimeout(wifiRefresh,3000);setTimeout(wifiRefresh,12000);}
+async function wifiJoin(ssid){await api('/wifi/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid})});toast('joining '+ssid);setTimeout(wifiRefresh,8000);}
+async function wifiForget(ssid){if(!confirm('Forget "'+ssid+'"?'))return;await api('/wifi/forget',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid})});toast('forgotten');wifiRefresh();}
+async function wifiAp(on){await api('/wifi/ap',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on})});toast(on?'hotspot esptube-setup up at 192.168.4.1':'hotspot off');setTimeout(wifiRefresh,800);}
+async function wifiReconnect(){await api('/wifi/reconnect',{method:'POST'});toast('rescanning');setTimeout(wifiRefresh,6000);}
+render();refresh();wifiRefresh();setInterval(refresh,5000);setInterval(wifiRefresh,10000);
+</script>
+</body>
+</html>

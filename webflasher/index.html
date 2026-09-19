@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flash ESPTube Clock</title>
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js"></script>
+<style>
+  :root{color-scheme:dark}
+  body{margin:0;background:#0c0e13;color:#e8ebf0;font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  main{max-width:640px;margin:0 auto;padding:32px 20px}
+  h1{font-size:24px;margin:0 0 4px} h1 span{color:#ffb454;text-shadow:0 0 12px #ffb45455}
+  .sub{color:#8b93a3;margin:0 0 24px}
+  .card{background:#161a22;border:1px solid #2a3140;border-radius:14px;padding:18px 20px;margin:16px 0}
+  ol{padding-left:20px} li{margin:6px 0}
+  code{background:#0d1017;border:1px solid #2a3140;border-radius:6px;padding:1px 6px;font-size:14px}
+  .warn{color:#ffb454} .dim{color:#8b93a3;font-size:14px}
+  esp-web-install-button{--esp-tools-button-color:#201400;--esp-tools-button-text-color:#201400}
+  a{color:#ffb454}
+</style>
+</head>
+<body>
+<main>
+  <h1><span>ESP</span>Tube Clock — Web Flasher</h1>
+  <p class="sub">Recovery / bootstrap flasher for the SI HAI IPS tube clock. No toolchain needed.</p>
+
+  <div class="card">
+    <ol>
+      <li>Use <b>Chrome or Edge on a desktop/laptop</b> (WebSerial isn't in Safari/Firefox or on phones).</li>
+      <li>Plug the clock into USB — <b>through the powered hub</b> (it won't enumerate straight into a Mac).</li>
+      <li>Click <b>Install</b>, pick the serial port, and confirm. It erases and reflashes the whole device.</li>
+    </ol>
+    <p style="text-align:center;margin:18px 0 4px">
+      <esp-web-install-button manifest="manifest.json"></esp-web-install-button>
+    </p>
+    <p class="dim" style="text-align:center">If the button says "Not supported," you're not in Chrome/Edge desktop.</p>
+  </div>
+
+  <div class="card">
+    <b>After flashing</b>
+    <ol>
+      <li>A full flash wipes saved settings, so the clock makes a <code>esptube-setup</code> WiFi network.</li>
+      <li>Join it, open <code>http://192.168.4.1</code>, and enter your 2.4&nbsp;GHz WiFi.</li>
+      <li>Find it back on your network (<code>esptube.local</code>) and open <code>tools/helper.html</code>.</li>
+    </ol>
+    <p class="dim">Just lost WiFi (didn't brick)? You don't need this — the clock already falls back to the
+      <code>esptube-setup</code> portal on its own. Reflash only if it won't boot or behaves badly.</p>
+  </div>
+
+  <p class="dim">Full recovery options (USB / stock restore / portal) are in
+    <a href="../docs/RECOVERY.md">docs/RECOVERY.md</a>. Source &amp; firmware:
+    <a href="../">the repo</a>.</p>
+</main>
+</body>
+</html>

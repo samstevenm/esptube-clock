@@ -1,0 +1,30 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>five-tube demo page</title>
+<style>
+  /* A basic HTML page sized for five tubes side by side (5×135 + 4×8 gap = 707 × 240).
+     Big type, high contrast, no external resources — what the bridge's `page:` source
+     (headless Chrome) and the helper's 🌐 HTML widget render best. */
+  html,body{margin:0;background:#000;color:#ffb454;font-family:-apple-system,Helvetica,Arial,sans-serif}
+  .row{display:flex;gap:8px;width:707px;height:240px}
+  .tube{width:135px;height:240px;background:#0a0603;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+  .big{font-size:64px;font-weight:800;line-height:1}
+  .lbl{font-size:16px;letter-spacing:2px;color:#8b93a3;text-transform:uppercase}
+  .bar{width:100px;height:14px;background:#221a0c;border-radius:7px;overflow:hidden}
+  .bar i{display:block;height:100%;background:#ffb454;animation:fill 6s ease-in-out infinite alternate}
+  @keyframes fill{from{width:10%}to{width:95%}}
+  .ring{width:96px;height:96px;border-radius:50%;border:12px solid #221a0c;border-top-color:#ffb454;animation:spin 3s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .clock{font-variant-numeric:tabular-nums}
+</style></head>
+<body><div class="row">
+  <div class="tube"><div class="lbl">temp</div><div class="big">21°</div><div class="lbl">outside</div></div>
+  <div class="tube"><div class="lbl">load</div><div class="bar"><i></i></div><div class="lbl">building</div></div>
+  <div class="tube"><div class="ring"></div><div class="lbl">syncing</div></div>
+  <div class="tube"><div class="lbl">time</div><div class="big clock" id="t">--:--</div><div class="lbl" id="d">—</div></div>
+  <div class="tube"><div class="lbl">hello</div><div class="big">👋</div><div class="lbl">tubes</div></div>
+</div>
+<script>
+  function tick(){const n=new Date();document.getElementById('t').textContent=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0')+':'+String(n.getSeconds()).padStart(2,'0');
+    document.getElementById('d').textContent=n.toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'}).toUpperCase();}
+  tick();setInterval(tick,1000);
+</script></body></html>
