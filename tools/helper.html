@@ -718,16 +718,25 @@ python3 tools/bridge/bridge.py serve         # leave it running; this panel take
       editor untouched. Great for a rotating kid dashboard.</div>
     <hr class="divider">
     <div class="row tight" id="showBar">
-      <span class="lbl" style="margin:0">🎬 Show</span>
-      <button class="primary mini" id="showDemoBtn" title="Run the built-in demo — the clock through all its paces, silly → bombastic → the warning → back to nixie">▶ Play demo</button>
+      <span class="lbl" style="margin:0">🎬 Shows</span>
+      <button class="primary mini" id="showDemoBtn" title="Play the built-in Grand Tour demo — the clock through all its paces">▶ Play demo</button>
       <button class="mini ghost" id="showStopBtn" title="Stop the show and hand back to the clock">■ Stop</button>
       <span style="flex:1"></span>
-      <button class="tiny ghost" id="showExportBtn" title="Download the demo as an esptube-show .json (a timed cue-list you can edit and share)">⤓ Export</button>
-      <button class="tiny ghost" id="showImportBtn" title="Load and play an esptube-show .json">⤒ Import & play</button>
+      <button class="tiny ghost" id="showNewBtn" title="Write / edit a show as cue-list JSON">✏️ New/Edit</button>
+      <button class="tiny ghost" id="showImportBtn" title="Load an esptube-show .json into the library and play it">📥 Import</button>
       <input type="file" id="showImportFile" accept="application/json,.json" style="display:none">
       <span class="note" id="showNow" style="margin:0;color:var(--amber)"></span>
     </div>
-    <div class="note">A <b>show</b> is a timed cue-list (<code>esptube-show</code> JSON): each step is a native-nixie / face / LED / animation action with a duration — the SMIL / cue-list seq model, importable & exportable as text.</div>
+    <div class="scenelist" id="showList"></div>
+    <details id="showEditWrap" style="margin:2px 0">
+      <summary class="note" style="cursor:pointer">✏️ Show editor — cue-list JSON (▶️ Play · ✏️ Edit · ⤓ Export · ⧉ Duplicate · ✕ Delete each show above)</summary>
+      <div class="saverow" style="margin-top:4px">
+        <input type="text" id="showEditName" placeholder="Show name" class="grow">
+        <button class="primary mini" id="showEditSaveBtn" title="Save to the library">💾 Save</button>
+      </div>
+      <textarea id="showEditText" rows="8" class="mono" style="width:100%;box-sizing:border-box;font-size:12px" spellcheck="false" placeholder='{"app":"esptube-show","v":1,"name":"...","steps":[{"act":"nixie","dur":5,"effect":"scroll","text":"HELLO"}]}'></textarea>
+    </details>
+    <div class="note">A <b>show</b> is a timed cue-list (<code>esptube-show</code> JSON): each step is a native-nixie / face / LED / animation action with a duration — the SMIL / cue-list seq model. Saved in this browser; import & export as text.</div>
     <hr class="divider">
     <div class="row tight">
       <label class="inl"><input type="checkbox" id="restoreLast"> 🔁 Restore last scene on connect</label>
@@ -871,7 +880,7 @@ const NTUBE=6;                 // 6 slots, index 0 = far RIGHT ... 5 = far LEFT
 const ORDER=[5,4,3,2,1,0];     // physical left -> right display order
 const CW=135, CH=240;          // panel resolution
 const RAW565_BIG_ENDIAN=true;  // hardware-confirmed: high byte first (big-endian RGB565)
-const LS={ ip:'esptube_ip', scenes:'esptube_scenes', last:'ESPTUBE_STATE_V3',
+const LS={ ip:'esptube_ip', scenes:'esptube_scenes', shows:'esptube_shows', last:'ESPTUBE_STATE_V3',
   cycle:'esptube_cycle', keys:'esptube_keys', pool:'esptube_imgpool', legacy:'esptube_last' };  // all browser-local; nothing here is sent to the device
 // Free-tier API keys, saved in THIS browser only (never pushed to the device or git).
 // Not a real secret in localStorage for a personal tool; used as the default when a
@@ -2951,7 +2960,8 @@ async function playShow(show){
 }
 function showExport(show){ downloadJSON('esptube-show-'+String(show.name||'show').replace(/[^a-z0-9_-]+/gi,'_').toLowerCase()+'.json', show); }
 function showImportPlay(file){ const r=new FileReader();
-  r.onload=()=>{ try{ const o=JSON.parse(r.result); if(o.app!=='esptube-show') throw new Error('not an esptube-show file'); playShow(o); }
+  r.onload=()=>{ try{ const o=JSON.parse(r.result); if(o.app!=='esptube-show') throw new Error('not an esptube-show file');
+      const nm=(o.name||file.name.replace(/\.json$/i,'')||'Imported'); showLibSave(nm,o); toast('Imported "'+nm+'" to the library','ok'); playShow(o); }
                  catch(e){ toast('Import failed: '+(e&&e.message||e),'bad'); } };
   r.readAsText(file); }
 /* Built-in demo — the clock through its paces, silly → bombastic → the warning → home. */
@@ -2975,6 +2985,37 @@ function demoShow(){ return { app:'esptube-show', v:1, name:'Grand Tour', loop:f
   {act:'nixie',  dur:9,  effect:'scroll', ms:170, text:'THE DANGER IS STILL PRESENT, IN YOUR TIME, AS IT WAS IN OURS. THIS PLACE IS BEST SHUNNED AND LEFT UNINHABITED.', cap:'...'},
   {act:'preset', dur:3, preset:0,                          cap:'home, to nixie'},
 ]}; }
+
+/* ---- Saved-shows library (localStorage, mirrors the scenes library) ---- */
+function loadShows(){ try{ return JSON.parse(localStorage.getItem(LS.shows)||'{}'); }catch(e){ return {}; } }
+function saveShows(o){ try{ localStorage.setItem(LS.shows,JSON.stringify(o)); return true; }catch(e){ toast('Storage full','bad'); return false; } }
+function showNames(){ return Object.keys(loadShows()).sort((a,b)=>a.localeCompare(b)); }
+function seedShows(){ const s=loadShows(); if(!s['Grand Tour']){ s['Grand Tour']=demoShow(); saveShows(s); } }
+function showLibSave(name,show){ if(!name) return false; const s=loadShows();
+  if(s[name] && !confirm('Overwrite show "'+name+'"?')) return false;
+  show.name=name; s[name]=show; saveShows(s); renderShowList(); return true; }
+function renderShowList(){ const box=$('#showList'); if(!box) return; box.innerHTML='';
+  const shows=loadShows(), names=showNames();
+  if(!names.length){ box.appendChild(el('div',{class:'empty'},'No saved shows — ▶ Play the demo, 📥 Import one, or ✏️ New/Edit to write cue-list JSON.')); return; }
+  names.forEach(name=>{ const sh=shows[name], n=(sh.steps||[]).length;
+    box.appendChild(el('div',{class:'scenerow'},[
+      el('span',{class:'snm'},name),
+      el('span',{class:'sbadge',title:n+' steps'},n+'⋯'),
+      el('button',{class:'tiny ico primary',title:'Play on the clock',onclick:()=>playShow(shows[name])},'▶️'),
+      el('button',{class:'tiny ico',title:'Edit the JSON',onclick:()=>showEditOpen(name)},'✏️'),
+      el('button',{class:'tiny ico',title:'Export .json',onclick:()=>showExport(shows[name])},'⤓'),
+      el('button',{class:'tiny ico',title:'Duplicate',onclick:()=>{ const s=loadShows(); let nn=name+' copy',k=2; while(s[nn]) nn=name+' copy '+(k++); s[nn]=JSON.parse(JSON.stringify(s[name])); s[nn].name=nn; saveShows(s); renderShowList(); }},'⧉'),
+      el('button',{class:'tiny ico',title:'Delete',onclick:()=>{ if(confirm('Delete show "'+name+'"?')){ const s=loadShows(); delete s[name]; saveShows(s); renderShowList(); } }},'✕'),
+    ])); });
+}
+function showEditOpen(name){ const sh=name?loadShows()[name]:demoShow();
+  $('#showEditName').value = name || 'New Show';
+  $('#showEditText').value = JSON.stringify(sh||demoShow(), null, 2);
+  const w=$('#showEditWrap'); if(w){ w.open=true; w.scrollIntoView({block:'nearest'}); } }
+function showEditSave(){ let o; try{ o=JSON.parse($('#showEditText').value); }catch(e){ toast('Invalid JSON: '+(e.message||e),'bad'); return; }
+  if(o.app!=='esptube-show'){ if(!confirm('This has no "app":"esptube-show" tag — save anyway?')) return; o.app='esptube-show'; o.v=o.v||1; }
+  const name=($('#showEditName').value||'').trim()||o.name||'Show';
+  if(showLibSave(name,o)){ toast('Saved show "'+name+'"','ok'); const w=$('#showEditWrap'); if(w) w.open=false; } }
 
 function mergeTube(t){ const d=defaultTube(); const out=Object.assign(d,t||{});
   for(const k of ['text','color','picture','weather','signal','clock','ticker','custom','html']) out[k]=Object.assign(defaultTube()[k],(t&&t[k])||{});
@@ -3562,9 +3603,11 @@ function wireGlobals(){
   $('#cycleBtn').onclick=cycleToggle; $('#cycleNextBtn').onclick=cycleNext;
   $('#showDemoBtn').onclick=()=>playShow(demoShow());
   $('#showStopBtn').onclick=()=>showStop();
-  $('#showExportBtn').onclick=()=>showExport(demoShow());
+  $('#showNewBtn').onclick=()=>showEditOpen(null);
+  $('#showEditSaveBtn').onclick=showEditSave;
   $('#showImportBtn').onclick=()=>$('#showImportFile').click();
   $('#showImportFile').addEventListener('change',e=>{ if(e.target.files[0]) showImportPlay(e.target.files[0]); e.target.value=''; });
+  seedShows(); renderShowList();
   $('#cycleIv').addEventListener('change',()=>{ const c=loadCycleCfg(); c.interval=Math.max(3,Math.min(3600,+$('#cycleIv').value||30)); saveCycleCfg(c); if(cycle.on) cycleArmTimer(); });
   $('#cycleAll').onclick=()=>{ const c=loadCycleCfg(); c.names=sceneNames(); saveCycleCfg(c); renderSceneList(); };
   $('#cycleNone').onclick=()=>{ const c=loadCycleCfg(); c.names=[]; saveCycleCfg(c); renderSceneList(); };
