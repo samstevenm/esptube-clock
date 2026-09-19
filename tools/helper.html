@@ -1374,6 +1374,18 @@ function fmtDurFull(sec){ sec=Math.max(0,Math.floor(sec)); const d=Math.floor(se
 const NIXIE_FAM=FONTS.nixie;
 function nixieVignette(g,W,H){ const rad=g.createRadialGradient(W/2,H*0.46,8,W/2,H/2,Math.max(W,H)*0.72);
   rad.addColorStop(0,'rgba(74,38,9,0.55)'); rad.addColorStop(1,'rgba(0,0,0,0)'); g.fillStyle=rad; g.fillRect(0,0,W,H); }
+/* shared nixie glyph pass — the ONE place glyphs get their look, so every nixie surface
+   (static big-clock AND the scrolling marquee/news) matches: faint ghost-"8" behind digits,
+   then two bloom passes (tight + wide). `cs` = per-glyph x centres. */
+function nixieGlyphPass(g,chars,cs,cy,fs,color,ghost=true){
+  g.save(); g.textAlign='center'; g.textBaseline='middle';
+  if(ghost){ g.globalAlpha=0.12; g.fillStyle=color;
+    chars.forEach((c,i)=>{ if(/[0-9]/.test(c)) g.fillText('8',cs[i],cy); }); g.globalAlpha=1; }
+  g.fillStyle=color; g.shadowColor=color;
+  g.shadowBlur=fs*0.45; chars.forEach((c,i)=>g.fillText(c,cs[i],cy));
+  g.shadowBlur=fs*0.18; chars.forEach((c,i)=>g.fillText(c,cs[i],cy));
+  g.restore();
+}
 /* draw one string of nixie glyphs, auto-fitted to (maxW,maxH); returns the px size used */
 function drawNixie(g,str,{cx,cy,maxW,maxH,size,color='#ff8a2a',ghost=true}){
   str=String(str); let fs=size||120, guard=0;
@@ -1383,13 +1395,25 @@ function drawNixie(g,str,{cx,cy,maxW,maxH,size,color='#ff8a2a',ghost=true}){
   g.font=`${wt} ${fs}px ${NIXIE_FAM}`; g.textAlign='center'; g.textBaseline='middle';
   const chars=str.split(''), widths=chars.map(c=>g.measureText(c).width), total=widths.reduce((a,b)=>a+b,0);
   let x=cx-total/2; const cs=widths.map(w=>{ const c=x+w/2; x+=w; return c; });
-  if(ghost){ g.save(); g.globalAlpha=0.12; g.fillStyle=color;
-    chars.forEach((c,i)=>{ if(/[0-9]/.test(c)) g.fillText('8',cs[i],cy); }); g.restore(); }
-  g.save(); g.fillStyle=color; g.shadowColor=color;
-  g.shadowBlur=fs*0.45; chars.forEach((c,i)=>g.fillText(c,cs[i],cy));
-  g.shadowBlur=fs*0.18; chars.forEach((c,i)=>g.fillText(c,cs[i],cy));
-  g.restore(); return fs;
+  nixieGlyphPass(g,chars,cs,cy,fs,color,ghost); return fs;
 }
+/* the SAME nixie treatment, positioned by LEFT x — for the scrolling marquee/news, which tile
+   a long string across the span canvas. Returns the run width so callers can tile with a gap. */
+function drawNixieAt(g,str,leftX,cy,fs,color='#ff8a2a'){
+  const wt=nixieWeight(); g.font=`${wt} ${fs}px ${NIXIE_FAM}`; g.textAlign='center';
+  const chars=String(str).split(''), widths=chars.map(c=>g.measureText(c).width);
+  let x=leftX; const cs=widths.map(w=>{ const c=x+w/2; x+=w; return c; });
+  nixieGlyphPass(g,chars,cs,cy,fs,color); return x-leftX;
+}
+/* per-tube warm-glass background across a span canvas — each 135-px tube gets its OWN vignette,
+   exactly like the device's separate glass tubes (a single span-wide vignette would look wrong). */
+function nixieSpanGlass(g,W,H,bg){
+  g.fillStyle=(!bg||bg==='#000000')?'#0a0603':bg; g.fillRect(0,0,W,H);
+  for(let x0=0;x0<W;x0+=CW){ const r=g.createRadialGradient(x0+CW/2,H*0.46,8,x0+CW/2,H/2,Math.max(CW,H)*0.72);
+    r.addColorStop(0,'rgba(74,38,9,0.55)'); r.addColorStop(1,'rgba(0,0,0,0)'); g.fillStyle=r; g.fillRect(x0,0,CW,H); }
+}
+/* real nixie is warm amber; treat the amber-ish defaults as "use the authentic glow". */
+const nixieColor=c=>(!c||c==='#ffb454'||c==='#ffd166')?'#ff8a2a':c;
 function renderClock(ctx,s){ const nixie=(s.face==='nixie');
   ctx.fillStyle = nixie ? (s.bg==='#000000'?'#0a0603':s.bg) : s.bg; ctx.fillRect(0,0,CW,CH);
   if(nixie) nixieVignette(ctx,CW,CH);
@@ -2297,8 +2321,14 @@ const ANIMS={
       {k:'font',label:'Font',type:'font',def:'display'},
       {k:'color',label:'Color',type:'color',def:'#ffb454'},
       {k:'bg',label:'Background',type:'color',def:'#000000'} ],
-    draw(g,W,H,t,p){ g.fillStyle=p.bg; g.fillRect(0,0,W,H); g.fillStyle=p.color; g.textBaseline='middle';
-      g.font=`bold ${p.size}px ${fontStack(p.font)}`; const txt=p.text||''; const tw=g.measureText(txt).width;
+    draw(g,W,H,t,p){ const txt=p.text||'';
+      if(p.font==='nixie'){                                   // real nixie: per-tube glass + ghost + bloom
+        nixieSpanGlass(g,W,H,p.bg); const col=nixieColor(p.color), wt=nixieWeight();
+        g.font=`${wt} ${p.size}px ${NIXIE_FAM}`; const tw=g.measureText(txt).width;
+        const gap=Math.max(40,p.size*0.6), pw=tw+gap; let x=-((t*p.speed)%pw);
+        for(;x<W;x+=pw) drawNixieAt(g,txt,x,H/2,p.size,col); return; }
+      g.fillStyle=p.bg; g.fillRect(0,0,W,H); g.fillStyle=p.color; g.textBaseline='middle'; g.textAlign='left';
+      g.font=`bold ${p.size}px ${fontStack(p.font)}`; const tw=g.measureText(txt).width;
       const gap=Math.max(40,p.size*0.6), pw=tw+gap; let x=-((t*p.speed)%pw); for(;x<W;x+=pw) g.fillText(txt,x,H/2); } },
 
   bigclock:{ name:'🕐 Big clock / countdown / timer / epoch', kind:'span',
@@ -2456,6 +2486,10 @@ const ANIMS={
       if(st.err){ g.textAlign='center'; g.textBaseline='middle';
         drawFittedText(g,'News unavailable:\n'+st.err+'\nconfigure a feed URL',{x:W/2,y:H/2,maxW:W-30,maxH:H-30,size:30,font:FONTS.sans,color:'#ffd166'}); return; }
       const txt=st.text||''; if(!txt){ g.fillStyle='#6f7c93'; g.textAlign='center'; g.textBaseline='middle'; g.font=`22px ${FONTS.sans}`; g.fillText('loading headlines…',W/2,H/2); return; }
+      if(p.font==='nixie'){                                   // real nixie: per-tube glass + ghost + bloom
+        nixieSpanGlass(g,W,H,p.bg); const col=nixieColor(p.color), wt=nixieWeight();
+        g.font=`${wt} ${p.size}px ${NIXIE_FAM}`; const tw=g.measureText(txt).width, gap=Math.max(60,p.size), pw=tw+gap;
+        let x=-((t*p.speed)%pw); for(;x<W;x+=pw) drawNixieAt(g,txt,x,H/2,p.size,col); return; }
       g.fillStyle=p.color; g.textBaseline='middle'; g.textAlign='left'; g.font=`bold ${p.size}px ${fontStack(p.font)}`;
       const tw=g.measureText(txt).width, gap=Math.max(60,p.size), pw=tw+gap; let x=-((t*p.speed)%pw);
       for(;x<W;x+=pw) g.fillText(txt,x,H/2); } },

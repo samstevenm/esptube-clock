@@ -396,12 +396,18 @@ static void layoutLeft(const char* s, int offset, char out[TUBE_COUNT]);
 static bool g_menuOpen = false;
 static int  g_menuIdx  = 0;
 static int  g_menuEdit = -1;   // -1 = browsing the list; else the M_* item open for in-place adjust
-static int  g_faceSel  = 0;    // FACE editor: preset index being previewed (applied on MODE-confirm)
-enum MenuAction { M_FACE, M_LED, M_BRIGHT_UP, M_BRIGHT_DN, M_WIFI, M_AP, M_TEST, M_FPS, M_BOOT, M_EXIT };
+// Editors keep a PENDING value; MODE-confirm writes it back (NVS), POWER cancels (revert).
+static int    g_faceSel  = 0;         // FACE: preset index previewed (applied on confirm)
+static int    g_briSel   = 0;         // BRI:  brightness previewed live; persisted on confirm
+static int    g_briOrig  = 0;         // BRI:  value to restore if you cancel
+static bool   g_apSel    = false;     // AP:   pending recovery-AP on/off
+static int    g_warnSel  = 0;         // WARN: pending weak-signal threshold dBm (0 = off)
+static Effect g_ledOrig  = Effect::Off;  // LED: effect to restore if you cancel
+enum MenuAction { M_FACE, M_LED, M_BRI, M_AP, M_IP, M_WARN, M_FPS, M_TEST, M_BOOT, M_EXIT };
 struct MenuEntry { const char* label; int action; };
 static const MenuEntry MENU[] = {
-    {"FACE", M_FACE}, {"LED", M_LED}, {"BRI+", M_BRIGHT_UP}, {"BRI-", M_BRIGHT_DN}, {"WIFI", M_WIFI}, {"AP", M_AP},
-    {"TEST", M_TEST}, {"FPS", M_FPS}, {"BOOT", M_BOOT}, {"EXIT", M_EXIT} };
+    {"FACE", M_FACE}, {"LED", M_LED}, {"BRI", M_BRI}, {"AP", M_AP}, {"IP", M_IP},
+    {"WARN", M_WARN}, {"FPS", M_FPS}, {"TEST", M_TEST}, {"BOOT", M_BOOT}, {"EXIT", M_EXIT} };
 static const int MENU_N = (int)(sizeof(MENU) / sizeof(MENU[0]));
 
 // ---- Text menu rendering (TFT built-in font via Tubes::drawText — NOT nixie plates) ----
@@ -450,60 +456,101 @@ static void menuNav(int dir) { g_menuIdx = (g_menuIdx + dir + MENU_N) % MENU_N; 
 static const char* faceShort(uint8_t p) {
     switch (p) { case 0: return "NIXIE"; case 1: return "DIGITAL"; case 2: return "LEDSHOW"; case 4: return "DATE"; default: return "OFF"; }
 }
+static const int WARN_OPTS[] = { 0, -70, -75, -80, -85 };   // weak-signal warn threshold; 0 = off
+static int warnStep(int cur, int dir) {
+    const int N = (int)(sizeof(WARN_OPTS) / sizeof(WARN_OPTS[0]));
+    int idx = 0; for (int k = 0; k < N; ++k) if (WARN_OPTS[k] == cur) { idx = k; break; }
+    return WARN_OPTS[(idx + dir + N) % N];
+}
+static Effect effectCycleNext(Effect e) {   // off -> rainbow -> breathe -> comet -> solid -> off
+    static const Effect C[] = { Effect::Off, Effect::Rainbow, Effect::Breathe, Effect::Comet, Effect::Solid };
+    const int N = (int)(sizeof(C) / sizeof(C[0]));
+    int idx = 0; for (int k = 0; k < N; ++k) if (C[k] == e) { idx = k; break; }
+    return C[(idx + 1) % N];
+}
 static String menuEditValue(int action) {
     switch (action) {
         case M_FACE: return faceShort((uint8_t)g_faceSel);
-        case M_LED:  return effectName();
+        case M_LED:  return String(effectName());                                                  // reflects the live preview
+        case M_BRI:  { char b[8]; snprintf(b, sizeof b, "%d%%", (g_briSel * 100 + 127) / 255); return String(b); }
+        case M_AP:   return g_apSel ? String("ON") : String("OFF");
+        case M_WARN: { if (!g_warnSel) return String("OFF"); char b[8]; snprintf(b, sizeof b, "%dDB", g_warnSel); return String(b); }
         case M_FPS:  { char b[12]; snprintf(b, sizeof b, "%dFPS", (int)(Esp1::stats().fps + 0.5f)); return String(b); }
     }
     return String();
 }
+// IP is shown as octets spread across the tubes ("IP" "192" "168" "11" "108"); everything else
+// is the "LABEL > VALUE" form. Read-only items (IP, FPS) just have no step handler.
 static void menuDrawEdit(int action) {
     uint8_t lr[TUBE_COUNT]; int nlive = liveTubesLR(lr);
     int p = 0;
-    if (p < nlive) menuPut(lr[p++], MENU[g_menuIdx].label);   // e.g. "FACE"
-    if (p < nlive) menuPut(lr[p++], ">");
-    if (p < nlive) menuPut(lr[p++], menuEditValue(action));   // e.g. "NIXIE"
-    for (; p < nlive; ++p) menuPut(lr[p], "");                // blank the rest
+    if (action == M_IP) {
+        if (!Net::connected()) {
+            if (p < nlive) menuPut(lr[p++], Net::apActive() ? "AP" : "NO");
+            if (p < nlive) menuPut(lr[p++], Net::apActive() ? "192.168.4.1" : "WIFI");
+        } else {
+            IPAddress ip = Net::ip();
+            if (p < nlive) menuPut(lr[p++], "IP");
+            for (int o = 0; o < 4 && p < nlive; ++o) menuPut(lr[p++], String(ip[o]));
+        }
+    } else {
+        if (p < nlive) menuPut(lr[p++], MENU[g_menuIdx].label);   // e.g. "FACE"
+        if (p < nlive) menuPut(lr[p++], ">");
+        if (p < nlive) menuPut(lr[p++], menuEditValue(action));   // e.g. "NIXIE"
+    }
+    for (; p < nlive; ++p) menuPut(lr[p], "");                    // blank the rest
 }
 static void menuEditEnter(int action) {
     g_menuEdit = action;
-    if (action == M_FACE) g_faceSel = g_preset;               // start from the current face; applied on MODE
+    switch (action) {
+        case M_FACE: g_faceSel = g_preset;               break;   // applied on confirm
+        case M_BRI:  g_briSel  = g_briOrig = g_bright;   break;   // preview brightness live from here
+        case M_AP:   g_apSel   = Net::apActive();        break;
+        case M_WARN: g_warnSel = Net::warnDbm();         break;
+        case M_LED:  g_ledOrig = g_effect;               break;   // remember, so cancel can revert
+    }
     Serial.printf("[menu] enter %s\n", MENU[g_menuIdx].label);
     menuDrawEdit(action);
 }
 static void menuEditStep(int dir) {
     switch (g_menuEdit) {
         case M_FACE: g_faceSel = (g_faceSel + dir + PRESET_N) % PRESET_N; break;
-        case M_LED:  cycleEffect(); break;                                          // forward-only; UP and DOWN both advance the glow
-        case M_FPS:  break;                                                         // read-only; redraw refreshes the live reading
+        case M_LED:  applyEffect(effectCycleNext(g_effect)); break;                  // LIVE preview (not saved until confirm)
+        case M_BRI:  { int v = g_briSel + dir * 16; if (v < 0) v = 0; if (v > 255) v = 255;
+                       g_briSel = v; applyBrightness((uint8_t)v); break; }           // LIVE preview, saved on confirm
+        case M_AP:   g_apSel = !g_apSel; break;                                      // toggle pending on/off
+        case M_WARN: g_warnSel = warnStep(g_warnSel, dir); break;
+        // M_FPS / M_IP: read-only — the redraw below just refreshes the reading
     }
     menuDrawEdit(g_menuEdit);
 }
-static void menuEditExit(bool apply) {                                              // MODE = confirm+apply, POWER = cancel; both step back to the list
-    if (apply && g_menuEdit == M_FACE) applyPreset((uint8_t)g_faceSel, true);       // persist the chosen face (and its preset-default effect)
-    // LED persisted itself via cycleEffect(); FPS is read-only
+static void menuEditExit(bool apply) {   // MODE = confirm+write-back, POWER = cancel; both return to the list
+    if (apply) {
+        switch (g_menuEdit) {
+            case M_FACE: applyPreset((uint8_t)g_faceSel, true);              break;  // savePreset + saveEffect
+            case M_LED:  saveEffect((uint8_t)g_effect);                      break;  // already applied live; persist it
+            case M_BRI:  setBrightness((uint8_t)g_briSel);                   break;  // saveBrightness
+            case M_AP:   if (g_apSel && !Net::apActive())      Net::startAp(true);
+                         else if (!g_apSel && Net::apActive()) Net::stopAp();  break;
+            case M_WARN: Net::setWarnDbm(g_warnSel);                         break;  // persisted in net NVS
+            // M_FPS / M_IP: read-only
+        }
+    } else {                                                                        // cancel: undo any live preview
+        if      (g_menuEdit == M_BRI) applyBrightness((uint8_t)g_briOrig);
+        else if (g_menuEdit == M_LED) applyEffect(g_ledOrig);
+    }
     g_menuEdit = -1; g_mode = Mode::Manual; drawMenu();
 }
 
 static void menuSelect() {
     switch (MENU[g_menuIdx].action) {
-        case M_FACE:      menuEditEnter(M_FACE); break;   // live: UP/DOWN scroll faces, MODE/POWER back to the list
-        case M_LED:       menuEditEnter(M_LED);  break;   // live: UP/DOWN cycle the underglow, MODE/POWER back
-        case M_BRIGHT_UP: { int v = (int)g_bright + 32; if (v > 255) v = 255; setBrightness((uint8_t)v); forceRedraw(); drawMenu(); break; }
-        case M_BRIGHT_DN: { int v = (int)g_bright - 32; if (v < 0)   v = 0;   setBrightness((uint8_t)v); forceRedraw(); drawMenu(); break; }
-        case M_WIFI: {    // scroll the address; short MODE afterwards returns to a face
-            g_menuOpen = false; Tubes::setNixieFadeSteps(4);
-            String ip = Net::connected() ? Net::ip().toString()
-                      : Net::apActive() ? String("NO WIFI - AP ") + Net::apSsid() + " AT 192.168.4.1" : String("NO WIFI");
-            nixieText(ip.c_str(), "scroll", 300); break; }
-        case M_AP: {      // WiFi recovery: host our own network so a phone can teach the clock a new WiFi
-            g_menuOpen = false; Tubes::setNixieFadeSteps(4);
-            Serial.println("[control] menu: recovery AP"); Net::startAp(true); break; }
-        case M_TEST:      g_menuOpen = false; Tubes::setNixieFadeSteps(4); clockSweepStart(86390, 5, 0, true); break;
-        case M_FPS:       menuEditEnter(M_FPS);  break;   // shows the live stream fps; UP/DOWN refresh, MODE/POWER back
-        case M_BOOT:      Serial.println("[control] menu reboot"); delay(50); ESP.restart(); break;
-        case M_EXIT:      closeMenu(true); break;
+        // In-place views: FACE/LED/BRI/AP/WARN are editable (write back on confirm, revert on cancel);
+        // IP/FPS are read-only info. All open with menuEditEnter and return via MODE/POWER.
+        case M_FACE: case M_LED: case M_BRI: case M_AP: case M_WARN: case M_IP: case M_FPS:
+            menuEditEnter(MENU[g_menuIdx].action); break;
+        case M_TEST:  g_menuOpen = false; Tubes::setNixieFadeSteps(4); clockSweepStart(86390, 5, 0, true); break;
+        case M_BOOT:  Serial.println("[control] menu reboot"); delay(50); ESP.restart(); break;
+        case M_EXIT:  closeMenu(true); break;
     }
 }
 
