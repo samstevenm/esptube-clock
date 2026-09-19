@@ -66,10 +66,11 @@
     News (scrolling headlines) · LED wave (rainbow/breathe/cycle/strobe) ·
     Matrix rain · Starfield · Plasma · Slot-machine digit roll · Alert flash ·
     plus Wipe / Fade transitions into the current scene.
-  Spanning canvas: render one wide (Npopulated x 135) x 240 canvas, slice into
-  135-px strips, push each strip to its tube left->right.  Honest bandwidth:
-  full-frame pushes are ~1-3 fps; LED effects run much faster.  Only changed
-  tubes are pushed each frame.  Add a new animation = add one entry to ANIMS.
+  Spanning canvas = the Surface's CANVAS (object model, docs/SCALING.md §0): render one wide
+  (Npopulated x 135) x 240 CANVAS, slice into 135-px strips, push each strip to its TILE (a tube)
+  left->right.  Honest bandwidth: full-frame pushes are ~1-3 fps; LED effects run much faster.
+  Only changed Tiles are pushed each frame (content holds via a BUFFER; animations push every frame).
+  Add a new animation = add one entry to ANIMS.
 
   DATA SOURCES (all client-side; graceful CORS/fetch fallback with a clear msg)
   ----------------------------------------------------------------------------
@@ -1129,7 +1130,8 @@ function encode565(px){ // px: RGBA top-down; -> RGB565 row-major top-down
   return out;
 }
 /* ============================================================================
-   ONE push path for pixels ("send deltas, never frames").
+   ONE push path for pixels ("send deltas, never frames") — the TRANSPORT layer (object
+   model, docs/SCALING.md §0): it carries a Buffer's pixels to each TILE.
    pushFrame() remembers the frame each tube is KNOWN to show (recorded only after a
    successful POST), diffs the new frame against it, and sends nothing (identical),
    only the changed row band via /blit, or the whole frame via /raw565. A dropped
@@ -1188,7 +1190,9 @@ const WIRE=(()=>{ const W=135,H=240, F_NOACK=1,F_CLEAR=4,F_V11=0x80, OP={BLIT:1,
   return {W,H,OP,F_NOACK,F_CLEAR,F_V11,BLOCK,DG_BAND,crc16,cobsEnc,cobsDec,succ,frame,datagram,parseReplies,rle565,dirtyBands,encodeBand,splitBands}; })();
 /* @end */
 
-/* @module outbox — THE pipeline: every pixel this page puts on a tube goes through Outbox.
+/* @module outbox — the client end of the TRANSPORT (object model, docs/SCALING.md §0): THE
+   pipeline every pixel this page puts on a TILE goes through. (A native-render Transport bypasses
+   this entirely — text, not pixels; see pushCurrentNative.)
    · latest-wins: one slot per tube; a newer submit replaces an older one that has not left yet
    · one frame in flight per tube, so the diff baseline (`shown`) can never be raced
    · baseline recorded at send, DELETED on any error / status 4 (the next push is a full tile)
