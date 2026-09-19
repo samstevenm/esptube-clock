@@ -41,9 +41,6 @@ jobs:
           pio --version
           esptool version
 
-      - name: Seed include/secrets.h from the template (main.cpp hard-includes it; unused, no creds)
-        run: test -e firmware/custom-fw/include/secrets.h || cp firmware/custom-fw/include/secrets.h.example firmware/custom-fw/include/secrets.h
-
       - name: Version label (tag name, else short SHA)
         id: ver
         run: |
