@@ -1129,6 +1129,19 @@ function encode565(px){ // px: RGBA top-down; -> RGB565 row-major top-down
   }
   return out;
 }
+/* Slice ONE Tile (CW x CH) out of a wider composition CANVAS read once (object model: compute the
+   Canvas once, address many Tiles from it) — x0 = the Tile's left column, strideW = the Canvas width
+   in px. Byte-identical to encode565() of that Tile's own getImageData. Writes into `out` (reused). */
+function encode565Into(px,x0,strideW,out){ let o=0;
+  for(let y=0;y<CH;y++){ let j=(y*strideW+x0)*4;
+    for(let x=0;x<CW;x++,j+=4){
+      const v=((px[j]&0xF8)<<8)|((px[j+1]&0xFC)<<3)|(px[j+2]>>3);
+      if(RAW565_BIG_ENDIAN){ out[o++]=(v>>8)&0xff; out[o++]=v&0xff; }
+      else{ out[o++]=v&0xff; out[o++]=(v>>8)&0xff; }
+    }
+  }
+  return out;
+}
 /* ============================================================================
    ONE push path for pixels ("send deltas, never frames") — the TRANSPORT layer (object
    model, docs/SCALING.md §0): it carries a Buffer's pixels to each TILE.
@@ -1277,10 +1290,11 @@ function diffRows(a,b){ const A=new Uint16Array(a.buffer,a.byteOffset,a.byteLeng
 const pushStats={frames:0,rects:0,skipped:0,bytes:0};   // shown in the animation studio status
 /* Every pixel push funnels here and from here into the Outbox (latest-wins per tube, dirty 16-row
    blocks, lossless RLE565/RAW565, cable -> WebSocket -> REST). Nothing talks to /raw565 directly any more. */
-async function pushFrame(idx,px,{force=false}={}){ const raw=encode565(px);
+async function pushEncoded(idx,raw,{force=false}={}){        // a Tile's RGB565 buffer -> the diffing TRANSPORT
   const r=await Outbox.submit(idx,raw,{force});
   if(r.skipped) pushStats.skipped++; else if(!r.superseded){ if(r.rect) pushStats.rects++; else pushStats.frames++; pushStats.bytes+=r.bytes; }
   return r; }
+async function pushFrame(idx,px,{force=false}={}){ return pushEncoded(idx,encode565(px),{force}); }
 async function pushGlowRgb(idx,rgb){ const key=rgb.r+','+rgb.g+','+rgb.b; if(LASTLED[idx]===key) return; await Transport.glow(idx,rgb); LASTLED[idx]=key; }
 /* a pre-encoded full frame (fade steps) — still recorded, so later diffs stay truthful */
 async function pushRaw(idx,raw){ const r=await Outbox.submit(idx,raw,{force:true}); if(!r.superseded){ pushStats.frames++; pushStats.bytes+=r.bytes; } return r; }
@@ -2720,7 +2734,7 @@ function paramsFromSpec(spec){ const o={}; spec.forEach(f=>o[f.k]=f.def); return
 function selectAnim(id){ engine.animId=id; const a=ANIMS[id];
   engine.params=engine.saved[id]?Object.assign(paramsFromSpec(a.params),engine.saved[id]):paramsFromSpec(a.params);
   engine.saved[id]=engine.params; engine.runState={ bornT:(performance.now()-engine.t0)/1000 };
-  engine.lastNativeCmd=null; engine.lastFrameKey=null;        // new effect: re-send its native command / re-emit its buffer
+  engine.lastNativeCmd=null; engine.lastFrameKey=null; engine.lastDrawKey=null;   // new effect: re-send native / re-emit buffer / force a redraw
   if(a.init) try{ a.init(engine.params,engine.runState); }catch(e){}
   buildParamsForm(); $('#animDesc').textContent=a.desc||''; startPoller(); autosave(); }
 
@@ -2770,13 +2784,18 @@ async function pushCurrentFrame(){ const a=currentAnim(), list=engine.curList||p
     if(key!=null){ if(key===engine.lastFrameKey) return; engine.lastFrameKey=key; }   // Tiles already show this buffer → skip
   }
   const jobs=[];
-  for(let k=0;k<list.length;k++){ const idx=list[k]; let px=null;
-    if(a.kind==='span') px=engine.spanCanvas.getContext('2d').getImageData(spanX(k),0,CW,CH).data;
-    else if(a.kind==='tube' && engine.tubeCanvases[k]) px=engine.tubeCanvases[k].getContext('2d').getImageData(0,0,CW,CH).data;
-    jobs.push({idx,px,led:engine.curLeds[idx]}); }
+  if(a.kind==='span'){                                          // read the composition CANVAS ONCE, slice per Tile (was: one getImageData per Tile)
+    const sc=engine.spanCanvas, W=sc.width, full=sc.getContext('2d').getImageData(0,0,W,CH).data;
+    for(let k=0;k<list.length;k++){ const idx=list[k];
+      jobs.push({idx, raw:encode565Into(full,spanX(k),W,new Uint8Array(CW*CH*2)), led:engine.curLeds[idx]}); }
+  } else {
+    for(let k=0;k<list.length;k++){ const idx=list[k];
+      const raw=(a.kind==='tube'&&engine.tubeCanvases[k]) ? encode565(engine.tubeCanvases[k].getContext('2d').getImageData(0,0,CW,CH).data) : null;
+      jobs.push({idx, raw, led:engine.curLeds[idx]}); }
+  }
   let failed=0;
   for(const j of jobs){
-    if(j.px){ try{ await pushFrame(j.idx,j.px); }catch(e){ failed++; } }      // skips unchanged, blits changed rows
+    if(j.raw){ try{ await pushEncoded(j.idx,j.raw); }catch(e){ failed++; } }   // diffs vs the Tile's baseline, blits changed rows
     if(j.led){ try{ await pushGlowRgb(j.idx,j.led); }catch(e){ failed++; } } }
   engine.failed=failed; updateEngStat(); }
 
@@ -2821,8 +2840,9 @@ function scheduleFrame(){ clearTimeout(engine.timer);
   const delay = (engine.pushing && !nativeActive()) ? Math.max(30,1000/engine.fps) : (document.hidden?600:66);
   engine.timer=setTimeout(frameLoop,delay); }
 async function frameLoop(){
-  const t=(performance.now()-engine.t0)/1000;
-  try{ drawCurrentFrame(t); }catch(e){}   // always refresh the on-screen preview (browser nixie approximation)
+  const t=(performance.now()-engine.t0)/1000, a=currentAnim();
+  let dk=null; if(a&&a.bufferKey){ try{ const k=a.bufferKey(engine.params,engine.runState,t); if(k!=null) dk=k+'|'+populatedList().length; }catch(e){} }
+  if(dk===null||dk!==engine.lastDrawKey){ engine.lastDrawKey=dk; try{ drawCurrentFrame(t); }catch(e){} }   // BUFFER the composition: recompute only when content changes; animations (dk=null) redraw every frame
   if(engine.pushing && !engine.busy){ engine.busy=true;
     try{ if(nativeActive()) await pushCurrentNative(); else await pushCurrentFrame(); }catch(e){} engine.busy=false; }
   scheduleFrame(); }
@@ -2832,7 +2852,7 @@ function updateEngStat(){ const d=$('#engDot'), s=$('#engStat');
     else { const kb=Math.round(pushStats.bytes/1024); s.textContent='pushing · '+pushStats.rects+' blits · '+pushStats.frames+' frames · '+pushStats.skipped+' skipped · '+kb+' KB'+(engine.failed?' · ⚠ '+engine.failed+' failed':''); } }
   else { d.className='dot'; s.textContent='preview only'; } }
 function startPushing(){ if(state.paused){ toast('⏸ Paused — ▶ resume first','bad'); return; }
-  setHandsOff(false); engine.pushing=true; engine.failed=0; engine.lastNativeCmd=null; engine.lastFrameKey=null; Object.assign(pushStats,{frames:0,rects:0,skipped:0,bytes:0}); updateEngStat(); scheduleFrame();
+  setHandsOff(false); engine.pushing=true; engine.failed=0; engine.lastNativeCmd=null; engine.lastFrameKey=null; engine.lastDrawKey=null; Object.assign(pushStats,{frames:0,rects:0,skipped:0,bytes:0}); updateEngStat(); scheduleFrame();
   toast((nativeActive()?'Native nixie — ':'Animation pushing — ')+currentAnim().name,'ok'); }
 function stopPushing(){ engine.pushing=false;
   if(engine.lastNativeSent){ engine.lastNativeSent=false; engine.lastNativeCmd=null; act(postBare('/nixie/stop')); }  // native → hand back to the clock
