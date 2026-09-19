@@ -2536,6 +2536,13 @@ const ANIMS={
       {k:'bg',label:'Background',type:'color',def:'#0b1020'} ],
     wantsPixels(p){ return p.layout!=='scroll'; },   // newspaper layouts are static pixel cards
     native(p,st){ return (p.layout==='scroll' && st && st.text) ? {effect:nixieCfg.effect, text:fmtNative(st.text), ms:nixieCfg.ms} : null; },
+    bufferKey(p,st,t){                                // BUFFER: a card is held for `dwell`s → one push per flip, zero in between
+      if(p.layout==='scroll') return null;            // scroll is native/continuous, not a held card
+      if(!st||!st.headlines||!st.headlines.length) return 'news:'+p.layout+':loading:'+((st&&st.err)||'');
+      const hl=st.headlines, dw=Math.max(2,p.dwell);
+      if(p.layout==='paper') return 'news:paper:'+p.bg+':'+(Math.floor(t/dw)%hl.length)+'/'+hl.length;
+      const nn=populatedList().length||1, n=Math.max(1,Math.round(spanW(nn)/CW)), base=Math.floor(t/dw);   // papertube: the set of headlines currently shown
+      let k='news:papertube:'+p.bg+':'; for(let i=0;i<n;i++) k+=((base+i)%hl.length)+','; return k; },
     async poll(p,st){ st.err=''; try{
       const feed=(p.feedUrl||'').trim(); if(!feed) throw new Error('set a feed URL');
       const nk=p.apiKey||apiKeys.rss2json;
@@ -2637,6 +2644,10 @@ const ANIMS={
     forceNative(p){ return p.layout==='flash'; },      // flash ALWAYS goes native, overriding the global text style
     native(p){ const t=fmtNative(p.text);              // flash → rate-timed native blink; banner/cards → a native flash fallback so a card-less display still shows the alert
       return p.layout==='flash' ? {effect:'flash', text:t, ms:Math.round(1000/(2*Math.max(0.5,p.rate)))} : {effect:'flash', text:t, ms:420}; },
+    bufferKey(p){                                       // BUFFER: static alert cards are held; the critical banner pulses so it can't be
+      if(p.layout==='flash') return null;               // native path
+      if(p.layout==='banner' && p.level==='critical') return null;   // border-pulse animates every frame
+      return 'alert:'+p.layout+':'+p.level+':'+p.bg+':'+fmtNative(p.text); },
     draw(g,W,H,t,p){ const C=this._c(p), icon={info:'ℹ',warning:'⚠',critical:'⛔',success:'✓'}[p.level]||'⚠';
       if(p.layout==='banner'){ drawCardSpan(g,W,H,{label:icon+' '+p.level, body:p.text, color:C, bg:p.bg});
         if(p.level==='critical'&&Math.floor(t*2)%2){ g.strokeStyle=C; g.lineWidth=8; g.strokeRect(4,4,W-8,H-8); } return; }   // critical border-pulse
@@ -2701,7 +2712,7 @@ function paramsFromSpec(spec){ const o={}; spec.forEach(f=>o[f.k]=f.def); return
 function selectAnim(id){ engine.animId=id; const a=ANIMS[id];
   engine.params=engine.saved[id]?Object.assign(paramsFromSpec(a.params),engine.saved[id]):paramsFromSpec(a.params);
   engine.saved[id]=engine.params; engine.runState={ bornT:(performance.now()-engine.t0)/1000 };
-  engine.lastNativeCmd=null;                                  // new effect: re-send its native command
+  engine.lastNativeCmd=null; engine.lastFrameKey=null;        // new effect: re-send its native command / re-emit its buffer
   if(a.init) try{ a.init(engine.params,engine.runState); }catch(e){}
   buildParamsForm(); $('#animDesc').textContent=a.desc||''; startPoller(); autosave(); }
 
@@ -2745,7 +2756,12 @@ function paintPreviewLeds(){ engine.previewMinis.forEach(m=>{ const led=engine.c
     m.ctx.fillStyle=c; m.ctx.fillRect(0,0,CW,CH); m.screen.style.boxShadow=`0 0 0 1px var(--line),0 0 18px -2px ${c}`; }); }
 function applyMiniGlow(m){ const led=engine.curLeds[m.idx]; if(led){ m.screen.style.boxShadow=`0 0 0 1px var(--line),0 0 16px -3px rgb(${led.r},${led.g},${led.b})`; } else m.screen.style.boxShadow=''; }
 
-async function pushCurrentFrame(){ const a=currentAnim(), list=engine.curList||populatedList(); const jobs=[];
+async function pushCurrentFrame(){ const a=currentAnim(), list=engine.curList||populatedList();
+  if(a.bufferKey){                                   // BUFFER discipline: produce once, hold, re-emit only on change
+    let key=null; try{ key=a.bufferKey(engine.params,engine.runState,(performance.now()-engine.t0)/1000); }catch(e){}
+    if(key!=null){ if(key===engine.lastFrameKey) return; engine.lastFrameKey=key; }   // Tiles already show this buffer → skip
+  }
+  const jobs=[];
   for(let k=0;k<list.length;k++){ const idx=list[k]; let px=null;
     if(a.kind==='span') px=engine.spanCanvas.getContext('2d').getImageData(spanX(k),0,CW,CH).data;
     else if(a.kind==='tube' && engine.tubeCanvases[k]) px=engine.tubeCanvases[k].getContext('2d').getImageData(0,0,CW,CH).data;
@@ -2808,7 +2824,7 @@ function updateEngStat(){ const d=$('#engDot'), s=$('#engStat');
     else { const kb=Math.round(pushStats.bytes/1024); s.textContent='pushing · '+pushStats.rects+' blits · '+pushStats.frames+' frames · '+pushStats.skipped+' skipped · '+kb+' KB'+(engine.failed?' · ⚠ '+engine.failed+' failed':''); } }
   else { d.className='dot'; s.textContent='preview only'; } }
 function startPushing(){ if(state.paused){ toast('⏸ Paused — ▶ resume first','bad'); return; }
-  setHandsOff(false); engine.pushing=true; engine.failed=0; engine.lastNativeCmd=null; Object.assign(pushStats,{frames:0,rects:0,skipped:0,bytes:0}); updateEngStat(); scheduleFrame();
+  setHandsOff(false); engine.pushing=true; engine.failed=0; engine.lastNativeCmd=null; engine.lastFrameKey=null; Object.assign(pushStats,{frames:0,rects:0,skipped:0,bytes:0}); updateEngStat(); scheduleFrame();
   toast((nativeActive()?'Native nixie — ':'Animation pushing — ')+currentAnim().name,'ok'); }
 function stopPushing(){ engine.pushing=false;
   if(engine.lastNativeSent){ engine.lastNativeSent=false; engine.lastNativeCmd=null; act(postBare('/nixie/stop')); }  // native → hand back to the clock
