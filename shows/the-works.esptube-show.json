@@ -1,0 +1,16 @@
+{
+  "app": "esptube-show", "v": 1, "name": "The Works", "loop": false,
+  "steps": [
+    { "act": "nixie",  "dur": 6,  "effect": "vscroll", "ms": 1300, "text": "THE WORKS - EVERY TRICK THE TUBES KNOW", "cap": "vertical intro" },
+    { "act": "anim",   "dur": 8,  "id": "swap",     "params": { "speed": 1.4 }, "cap": "individual tubes" },
+    { "act": "anim",   "dur": 6,  "id": "swap",     "params": { "speed": 4 },   "cap": "swapping positions" },
+    { "act": "anim",   "dur": 9,  "id": "pong",     "params": { "speed": 220 }, "cap": "pong" },
+    { "act": "anim",   "dur": 4,  "id": "plasma",   "params": {},               "cap": "primitive colours" },
+    { "act": "led",    "dur": 3,  "led": "rainbow",                             "cap": "underglow colours" },
+    { "act": "anim",   "dur": 4,  "id": "matrix",   "params": {},               "cap": "simple images" },
+    { "act": "anim",   "dur": 4,  "id": "starfield","params": {},               "cap": "more images" },
+    { "act": "anim",   "dur": 5,  "id": "ticker",   "params": { "source": "crypto", "cryptoId": "ethereum", "cryptoCur": "usd" }, "cap": "live data" },
+    { "act": "nixie",  "dur": 12, "effect": "vpage",  "ms": 1400, "text": "INDIVIDUAL TUBES - SWAPPING POSITIONS - PONG - COLOURS - IMAGES - VERTICAL SCROLL", "cap": "the recap" },
+    { "act": "preset", "dur": 3,  "preset": 0,                    "cap": "home, to nixie" }
+  ]
+}

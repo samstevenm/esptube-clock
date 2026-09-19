@@ -30,11 +30,24 @@ Play / export / import from the helper's **🎬 Scenes → Show** row. The built
 | `preset` | `preset` 0–4 | Device face: `0` nixie clock · `1` digital · `2` LED show · `3` off · `4` date. |
 | `white` | `text`, `font`, `color`, `bg`, `size` | Plain built-in-font text across the tubes (pixels). |
 | `led` | `led` (`rainbow`/`breathe`/`comet`/`off`/`solid`), `rgb` | Underglow effect (runs on-device). |
-| `anim` | `id`, `params` | Run a studio animation for the step: `news`, `ticker`, `plasma`, `matrix`, `starfield`, `ledwave`, `sparkline`, `calendar`, … Text effects honour `params.output: "native"` to render as nixie instead of pixels. |
+| `anim` | `id`, `params` | Run a studio animation for the step: `pong` (a ball across the tubes), `swap` (coloured blocks + numbers rotating around the tubes — per-tube addressing / positions swapping), `matrix`, `starfield`, `plasma`, `ledwave`, `news`, `ticker`, `sparkline`, `calendar`, … Text effects (`news`/`ticker`) render as nixie per the global style; graphical ones push pixels. |
 | `clear` | — | Blank the tubes. |
 
 Text is folded to the device glyph set (`A–Z 0–9 - : . ! ? ° % + /`); `▲→+`, `▼→-`,
 `•→-`, commas dropped. Long text in `vscroll`/`vpage` is hyphenated to the live-tube count.
+
+The **global nixie style** (effect · rate · ⚡native, set in the helper's 🕯️ Nixie panel) governs
+how `news`/`ticker` and the message box render everywhere; a show's `nixie` step sets its own
+`effect`/`ms` explicitly, so a saved show always plays the way it was authored.
+
+## Bundled shows
+
+- **`grand-tour.esptube-show.json`** — the showpiece: plain text → digital → nixie → cheeky lines →
+  live news → per-tube swap → colours → LEDs → **pong** → images → live crypto → bombast → the
+  long-term-nuclear-waste warning (vertical) → home. Escalating, silly, then ominous.
+- **`the-works.esptube-show.json`** — the rest of the box: a vertical-scroll intro, **individual
+  tubes** and **positions swapping** (`swap`), **pong**, primitive colours, simple images, live
+  data, and a vertical-page recap. Both are seeded into the helper's 🎬 Shows library on load.
 
 ## Interop
 
