@@ -459,14 +459,14 @@
     <a href="https://github.com/samstevenm/esptube-clock" target="_blank" rel="noopener">the repo</a>
     (double-click the file, or serve it over <code>http://localhost</code>). This page is fully usable
     for designing scenes offline.
-    <button class="tiny" onclick="this.parentElement.hidden=true">dismiss</button>
+    <button class="tiny ghost" onclick="this.parentElement.hidden=true">✕ Dismiss</button>
   </div>
   <!-- ===================== DEVICE CONTROLS ===================== -->
   <div class="panel">
-    <h2>🕰️ Device <span class="sub">controls and configuration saved on the clock · <span id="clockmeta"></span></span><span hidden>Clock controls</span></h2>
+    <h2>🕰️ Device <span class="sub"><span hidden>Clock controls · </span>controls and configuration saved on the clock · <span id="clockmeta"></span></span></h2>
     <div class="barwrap">
       <div class="barcol">
-        <span class="lbl">🎭 Device face <span class="note" style="margin:0">— what the clock shows by itself · the physical MODE button cycles these</span></span>
+        <span class="lbl">🎭 Device face</span>
         <div class="row tight" id="presetBtns">
           <button class="seg mini" data-preset="0" title="Wide Nixie clock (default)">🕯️ Nixie</button>
           <button class="seg mini" data-preset="1" title="Big digital clock">🔢 Digital</button>
@@ -474,6 +474,7 @@
           <button class="seg mini" data-preset="3" title="Screens off">🌙 Off</button>
           <button class="seg mini" data-preset="4" title="Today's date in nixie letters (e.g. SEP17)">📅 Date</button>
         </div>
+        <span class="note" style="margin:0">What the clock shows by itself · the physical MODE button cycles these.</span>
         <span class="note" style="margin:0">Now: <b id="modeind" style="color:var(--amber)">—</b>
           <span id="handsOffInd" style="display:none;color:var(--amber)">· 🔌 auto-push paused <a href="#" id="handsOffResume" title="Let auto-push widgets and restore-on-connect push again">resume</a></span></span>
       </div>
@@ -503,15 +504,15 @@
           <button class="mini ghost" id="allOffBtn" title="Turn all back lights off">🌑 Off</button>
         </div>
         <div class="row tight" title="Effects the clock runs by itself (no pushing, survives this page closing)">
-          <button class="tiny ghost" data-led="rainbow">🌈 rainbow</button><button class="tiny ghost" data-led="breathe">🫁 breathe</button><button class="tiny ghost" data-led="comet">☄️ comet</button><button class="tiny ghost" data-led="solid" title="The colour on the left, held by the clock">■ solid</button><button class="tiny ghost" data-led="off">off</button>
+          <button class="tiny ghost" data-led="rainbow">🌈 Rainbow</button><button class="tiny ghost" data-led="breathe">🫁 Breathe</button><button class="tiny ghost" data-led="comet">☄️ Comet</button><button class="tiny ghost" data-led="solid" title="The colour on the left, held by the clock">■ Solid</button><button class="tiny ghost" data-led="off">🌑 Off</button>
         </div>
       </div>
       <div class="barcol">
         <span class="lbl">🖼️ Scene</span>
         <div class="row tight">
-          <button class="primary mini" id="pushSceneBtn" title="Send the whole scene to the clock">📤 Push</button>
-          <button class="mini ghost" id="clearAllBtn" title="Clear every tube">🧹 Clear</button>
-          <button class="mini ghost" id="refreshBtn" title="Re-read the clock's status">🔄</button>
+          <button class="primary mini" id="pushSceneBtn" title="Send the whole Space to the clock">📤 Push Space</button>
+          <button class="mini ghost" id="clearAllBtn" title="Clear every Tile">🧹 Clear Tiles</button>
+          <button class="mini ghost" id="refreshBtn" title="Re-read the clock's status">🔄 Refresh</button>
         </div>
       </div>
     </div>
@@ -522,7 +523,7 @@
           <span class="lbl">🌍 Timezone (POSIX TZ, saved on device)</span>
           <div class="row tight">
             <input type="text" id="tz" class="grow" placeholder="PST8PDT,M3.2.0,M11.1.0">
-            <button class="mini" id="tzBtn">🌍 Set</button>
+            <button class="mini" id="tzBtn">🌍 Save timezone</button>
             <button class="mini ghost" id="timeBtn" title="Set the clock's time (and its battery-backed RTC chip) from this computer — for a clock with no internet">🕐 Set time from here</button>
           </div>
         </div>
@@ -532,7 +533,7 @@
           <div class="row tight">
             <button class="mini" id="wfScan" title="Ask the clock what networks it can see">🔍 Scan</button>
             <button class="mini ghost" id="wfApOn" title="The clock hosts its own network esptube-setup (password esptube-setup) at 192.168.4.1 — a phone can configure it from there">🛟 Hotspot on</button>
-            <button class="mini ghost" id="wfApOff">off</button>
+            <button class="mini ghost" id="wfApOff">🌑 Hotspot off</button>
             <button class="mini ghost" id="wfReconnect" title="Rescan and join the strongest saved network">🔄 Reconnect</button>
           </div>
           <div id="wfScanList" class="note" style="margin:0"></div>
@@ -541,7 +542,7 @@
             <input type="password" id="wfPass" placeholder="password" maxlength="63" style="min-width:120px" autocomplete="off">
             <button class="mini primary" id="wfAdd" title="The clock saves it (up to 8) and joins it now. The password goes to the clock only; this page keeps nothing">📶 Join &amp; remember</button>
           </div>
-          <div id="wfSaved" class="row tight" style="flex-wrap:wrap"></div>
+          <div id="wfSaved" class="row tight"></div>
           <span class="note" style="margin:0">The clock joins the strongest saved network it can see and raises the hotspot by itself when none is in range (or from its menu: long-press MODE → AP). No WiFi needed for the clock, faces, messages or the USB shell.</span>
         </div>
         <div class="barcol" style="min-width:320px">
@@ -591,7 +592,7 @@
 
   <!-- ===================== LIVE (browser-side capture → WebSocket) ===================== -->
   <div class="panel" id="livePanel">
-    <h2>📡 Stream · from this browser <span class="sub">camera · screen or browser tab · video/GIF file · animation → straight to the tubes</span></h2>
+    <h2>📡 Stream · from this browser <span class="sub">camera · screen or browser tab · video/GIF file · animation → straight to the Tiles</span></h2>
     <div class="barwrap">
       <div class="barcol" style="min-width:300px">
         <span class="lbl">🎥 Source</span>
@@ -607,19 +608,19 @@
             <label class="inl" title="Seconds before the un-cast tubes shift one character along"><span>rotate every</span> <input type="number" id="lvRotate" value="8" min="1" max="600" style="width:56px"> s</label>
             <span class="note" id="lvCharsStat" style="margin:0"></span>
           </div>
-          <div class="row tight" style="margin-top:6px;flex-wrap:wrap">
+          <div class="row tight" style="margin-top:6px">
             <span class="lbl" style="margin:0">🎭 Cast</span>
-            <button class="tiny" data-castfam="dwarves" title="Put the dwarves on the tubes, left to right">load dwarves</button>
-            <button class="tiny" data-castfam="island" title="Put the island family on the tubes">load island</button>
-            <button class="tiny" data-castfam="winter" title="Put the winter kingdom on the tubes">load winter</button>
-            <button class="tiny" data-castfam="mix" title="One character from each family, shuffled">mix</button>
-            <button class="tiny ghost" data-castfam="" title="Clear the cast — every tube goes back to the rotating family">auto</button>
+            <button class="tiny" data-castfam="dwarves" title="Put the dwarves on the Tiles, left to right">🎭 Load dwarves</button>
+            <button class="tiny" data-castfam="island" title="Put the island family on the Tiles">🎭 Load island</button>
+            <button class="tiny" data-castfam="winter" title="Put the winter kingdom on the Tiles">🎭 Load winter</button>
+            <button class="tiny" data-castfam="mix" title="One character from each family, shuffled">🔀 Mix cast</button>
+            <button class="tiny ghost" data-castfam="" title="Clear the cast — every Tile goes back to the rotating family">↺ Auto cast</button>
             <span class="note" style="margin:0">drag a face onto a tube card or a slot below · click a slot to clear it</span>
           </div>
-          <div class="row tight" id="castSlots" style="margin-top:6px;gap:6px"></div>
-          <div id="castPalette" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px"></div>
+          <div class="row tight" id="castSlots" style="margin-top:6px"></div>
+          <div id="castPalette" class="row tight" style="margin-top:6px"></div>
         </div>
-        <div class="row tight" id="lvLookRow" style="margin-top:8px;flex-wrap:wrap" title="Background + filters for whatever is live: characters, camera, files, the animation frame">
+        <div class="row tight" id="lvLookRow" style="margin-top:8px" title="Background + filters for whatever is live: characters, camera, files, the animation frame">
           <span class="lbl" style="margin:0">🎨 Look</span>
           <select id="lkBg" title="What sits behind the picture (characters are transparent; other sources cover it)"><option value="black">black</option><option value="solid">colour</option><option value="grad">gradient ↕</option><option value="glow">glow behind each tube</option><option value="studio">✨ animation studio frame</option></select>
           <input type="color" id="lkC1" value="#102040" title="colour / gradient top / glow"><input type="color" id="lkC2" value="#000000" title="gradient bottom">
@@ -628,14 +629,14 @@
           <label class="inl" title="contrast %">◐ <input type="range" id="lkContrast" min="40" max="200" value="100" style="width:70px"></label>
           <label class="inl" title="saturation %">🎨 <input type="range" id="lkSat" min="0" max="250" value="100" style="width:70px"></label>
           <label class="inl" title="hue rotate °">🌈 <input type="range" id="lkHue" min="0" max="360" value="0" style="width:70px"></label>
-          <button class="tiny ghost" id="lkReset" title="Back to black, no filters">reset</button>
+          <button class="tiny ghost" id="lkReset" title="Back to black, no filters">↺ Reset look</button>
         </div>
         <span class="note" style="margin:0">Chrome asks for camera / screen permission the first time. The browser captures, compresses and streams by itself — no other app needed.</span>
       </div>
       <div class="barcol">
         <span class="lbl">🧱 Layout · 📦 Format · 🎞️ fps</span>
         <div class="row tight">
-          <select id="lvLayout" title="Across all tubes = one wide picture (or one character per tube); Same on every tube = the picture repeated"><option value="span">Across all tubes</option><option value="tile">Same on every tube</option></select>
+          <select id="lvLayout" title="Across all Tiles = one wide picture (or one character per Tile); Same on every Tile = the picture repeated"><option value="span">Across all Tiles</option><option value="tile">Same on every Tile</option></select>
           <select id="lvFmt"><option value="pal4x2">16 colours, line-doubled (fast)</option><option value="pal4">16 colours, full rows</option><option value="rle">RLE (flat art)</option></select>
           <label class="inl"><input type="checkbox" id="lvDither" checked> dither</label>
           <select id="lvFps"><option value="auto">auto fps</option><option value="4">4 fps</option><option value="8">8 fps</option><option value="12">12 fps</option></select>
@@ -651,13 +652,13 @@
   <!-- ===================== WIRED / STREAM (bridge) ===================== -->
   <!-- Controls light up while tools/bridge/bridge.py serve answers on this machine; otherwise it explains how to start it. -->
   <div class="panel" id="bridgePanel">
-    <h2>📡 Stream · from the bridge app <span class="sub">the bridge app on this Mac: webcam · file · YouTube · web page · characters → tubes, over WiFi or the USB cable</span>
-      <span class="note" id="bridgeUsb" style="margin:0 0 0 8px"></span></h2>
+    <h2>📡 Stream · from the bridge app <span class="sub">the bridge app on this Mac: webcam · file · YouTube · web page · characters → Tiles, over WiFi or the USB cable</span></h2>
+    <div class="note" id="bridgeUsb" style="margin:0 0 8px"></div>
     <div id="brOff" class="note" style="margin:0 0 10px;padding:8px 10px;border:1px dashed var(--line2);border-radius:8px">
       <b>Bridge not running.</b> This panel wakes up by itself while <code>tools/bridge/bridge.py serve</code> answers on this machine. In a terminal, from the project folder:
       <div class="cmd" style="margin-top:6px"><pre id="cBr">brew install ffmpeg yt-dlp                  # once — ffmpeg decodes video, yt-dlp fetches YouTube
 python3 tools/bridge/bridge.py doctor        # checks ffmpeg · yt-dlp · Chrome · USB cable · the clock
-python3 tools/bridge/bridge.py serve         # leave it running; this panel takes over</pre><button class="tiny" data-copy="cBr">Copy</button></div>
+python3 tools/bridge/bridge.py serve         # leave it running; this panel takes over</pre><button class="tiny ghost" data-copy="cBr">📋 Copy</button></div>
       Plug the clock into this Mac (through the powered hub) and the bridge sees the USB port too — the same frames go over the cable
       (115200 baud ≈ 10 KB/s, so stills rather than video) plus the text shell. For the shell straight from this page, see 🧷 USB serial below.
     </div>
@@ -673,13 +674,13 @@ python3 tools/bridge/bridge.py serve         # leave it running; this panel take
             <option value="test">🧪 Test pattern</option></select>
           <input type="text" id="brCustom" placeholder="or type one: file:/path.mp4 · url:https://youtube… · dir:/frames · page:https://… · screen:0" class="grow" style="min-width:180px" spellcheck="false" title="Any bridge source spec — when filled in it overrides the menu">
         </div>
-        <div class="row tight" id="brCharsRow" style="margin-top:6px;flex-wrap:wrap"><span class="note" style="margin:0">cast:</span><span id="brChars"></span>
+        <div class="row tight" id="brCharsRow" style="margin-top:6px"><span class="lbl">🎭 Cast</span><span id="brChars"></span>
           <label class="inl" title="Seconds each character stays before the cast shifts one tube along"><span>rotate every</span> <input type="number" id="brRotate" value="8" min="1" max="600" style="width:56px"> s</label></div>
       </div>
       <div class="barcol">
         <span class="lbl">🧱 Layout · 📦 Format · 🎞️ fps</span>
         <div class="row tight">
-          <select id="brLayout" title="Character sets always put one character per tube"><option value="tile">One per tube</option><option value="span">Across all tubes</option></select>
+          <select id="brLayout" title="Character sets always put one character per Tile"><option value="tile">One per Tile</option><option value="span">Across all Tiles</option></select>
           <select id="brFmt" title="pal4x2 = 16 colours + line doubling — the fastest that still looks like video"><option value="pal4x2">16 colours, line-doubled (pal4x2)</option><option value="pal4">16 colours (pal4)</option><option value="rle">RLE</option><option value="raw">Raw</option></select>
           <input type="number" id="brFps" value="10" min="1" max="30" style="width:60px" title="Target fps per tube — the bridge paces itself down to what the clock can draw">
           <button class="mini primary" id="brStart" title="Start streaming this source (takes over the glass; ⏹ or 🧹 Hand back returns it)">▶ Stream</button>
@@ -717,7 +718,7 @@ python3 tools/bridge/bridge.py serve         # leave it running; this panel take
       <input type="text" id="serIn" class="grow mono" placeholder="type a shell command, Enter sends — help · status · preset 0 · nixie HELLO · countdown 90   (↑ ↓ = history)" spellcheck="false" autocomplete="off" title="One command per line. ↑ / ↓ walk the history">
       <button class="mini" id="serSend" title="Send the command">↵ Send</button>
     </div>
-    <div class="row tight" id="serQuick" style="margin-top:6px;flex-wrap:wrap"><span class="note" style="margin:0 4px 0 0">quick:</span></div>
+    <div class="row tight" id="serQuick" style="margin-top:6px"><span class="note" style="margin:0 4px 0 0">quick:</span></div>
     <div class="note" style="margin:8px 0 0">📶 WiFi over the cable: use <b>⚙️ Setup → WiFi</b> — while the cable is connected its buttons travel over USB, no network needed.</div>
     <details class="tools" style="margin-top:8px"><summary>ℹ️ How the serial link works</summary>
       <ul class="note" style="margin:8px 0 0;padding-left:18px;line-height:1.5">
@@ -737,18 +738,18 @@ python3 tools/bridge/bridge.py serve         # leave it running; this panel take
   <!-- ===================== SCENES ===================== -->
   <div class="panel">
     <h2>🎬 Scenes <span class="sub">save · load · edit · cycle</span></h2>
-    <div class="saverow">
+    <div class="row tight">
       <input type="text" id="sceneName" placeholder="🎬 Name this scene…" class="grow">
       <button class="primary mini" id="sceneSaveBtn" title="Save the current tubes as a scene (overwrites a same-named one)">💾 Save</button>
-      <button class="mini" id="sceneDeviceBtn" title="Save the clock's current 🎭 device face as a scene (the clock draws it itself — cycle to it to hand off)">🎭 Save device face</button>
-      <button class="mini" id="starterBtn" title="Add a few ready-made scenes">⭐ Starter</button>
-      <button class="mini" id="sceneImportBtn" title="Load a scene from a .json file">📥 Import</button>
+      <button class="mini ghost" id="sceneDeviceBtn" title="Save the clock's current 🎭 device face as a scene (the clock draws it itself — cycle to it to hand off)">🎭 Save device face</button>
+      <button class="mini ghost" id="starterBtn" title="Add a few ready-made scenes">⭐ Add starters</button>
+      <button class="mini ghost" id="sceneImportBtn" title="Load a scene from a .json file">📥 Import scene</button>
       <input type="file" id="sceneImportFile" accept="application/json,.json" style="display:none">
     </div>
     <div class="row tight" style="margin:2px 0 2px">
       <span class="note" style="margin:0">A scene captures:</span>
-      <button class="seg" id="modePerTube" title="Each tube shows its own widget">▦ Per-tube</button>
-      <button class="seg" id="modeSpanning" title="One wide picture across all tubes">🖼️ Spanning</button>
+      <button class="seg" id="modePerTube" title="Each Tile shows its own widget">▦ Per-Tile</button>
+      <button class="seg" id="modeSpanning" title="One wide picture across all Tiles">🖼️ Spanning</button>
     </div>
     <div class="scenelist" id="sceneList"></div>
     <hr class="divider">
@@ -759,9 +760,9 @@ python3 tools/bridge/bridge.py serve         # leave it running; this panel take
       <span class="note" style="margin:0">⏱️ every</span>
       <input type="number" id="cycleIv" min="3" max="3600" value="30" style="width:70px">
       <span class="note" style="margin:0">sec</span>
-      <span style="flex:1"></span>
-      <button class="tiny ghost" id="cycleAll" title="Tick all scenes">☑ all</button>
-      <button class="tiny ghost" id="cycleNone" title="Untick all scenes">☐ none</button>
+      <span class="grow"></span>
+      <button class="tiny ghost" id="cycleAll" title="Tick all scenes">☑ Select all</button>
+      <button class="tiny ghost" id="cycleNone" title="Untick all scenes">☐ Select none</button>
       <span class="note" id="cycleNow" style="margin:0;color:var(--amber)"></span>
     </div>
     <div class="note">Tick ☑ the scenes to include, then ▶ Start — it shows each in turn, leaving your
@@ -771,16 +772,16 @@ python3 tools/bridge/bridge.py serve         # leave it running; this panel take
       <span class="lbl" style="margin:0">🎬 Shows</span>
       <button class="primary mini" id="showDemoBtn" title="Play the built-in Grand Tour demo — the clock through all its paces">▶ Play demo</button>
       <button class="mini ghost" id="showStopBtn" title="Stop the show and hand back to the clock">■ Stop</button>
-      <span style="flex:1"></span>
-      <button class="tiny ghost" id="showNewBtn" title="Write / edit a show as cue-list JSON">✏️ New/Edit</button>
-      <button class="tiny ghost" id="showImportBtn" title="Load an esptube-show .json into the library and play it">📥 Import</button>
+      <span class="grow"></span>
+      <button class="tiny ghost" id="showNewBtn" title="Write / edit a show as cue-list JSON">✏️ Edit show</button>
+      <button class="tiny ghost" id="showImportBtn" title="Load an esptube-show .json into the library and play it">📥 Import show</button>
       <input type="file" id="showImportFile" accept="application/json,.json" style="display:none">
       <span class="note" id="showNow" style="margin:0;color:var(--amber)"></span>
     </div>
     <div class="scenelist" id="showList"></div>
-    <details id="showEditWrap" style="margin:2px 0">
-      <summary class="note" style="cursor:pointer">✏️ Show editor — cue-list JSON (▶️ Play · ✏️ Edit · ⤓ Export · ⧉ Duplicate · ✕ Delete each show above)</summary>
-      <div class="saverow" style="margin-top:4px">
+    <details class="tools" id="showEditWrap" style="margin:2px 0">
+      <summary>✏️ Show editor <span class="note" style="margin:0;text-transform:none;letter-spacing:0">— cue-list JSON</span></summary>
+      <div class="row tight" style="margin-top:4px">
         <input type="text" id="showEditName" placeholder="Show name" class="grow">
         <button class="primary mini" id="showEditSaveBtn" title="Save to the library">💾 Save</button>
       </div>
@@ -791,21 +792,21 @@ python3 tools/bridge/bridge.py serve         # leave it running; this panel take
 
   <!-- ===================== TUBE GRID ===================== -->
   <div class="panel" id="tubesPanel">
-    <h2>🔦 Tubes <span class="sub">left → right as they stand on the clock · drag a card's title onto another to swap · 1–6 selects</span></h2>
+    <h2>🔦 Tiles <span class="sub"><span hidden>Tubes · </span>left → right as they stand on the clock · drag a card's title onto another to swap · 1–6 selects</span></h2>
     <div id="grid" class="grid"></div>
   </div>
   <div class="panel" id="stagePanel">
-    <h2>🧊 Stage <span class="sub">the whole display in 3-D, in millimetres · drag the background to orbit · click a tube to select · drag a tube to move it (hold X, Y or Z to lock an axis)</span></h2>
-    <div class="row tight" style="flex-wrap:wrap">
+    <h2>🧊 Stage <span class="sub">the whole Space in 3-D, in millimetres · drag to orbit · click a Tile to select · drag a Tile to move it (hold X, Y or Z to lock an axis)</span></h2>
+    <div class="row tight">
       <span class="seggrp" id="stViews"><button class="tiny ghost" data-view="front" title="Straight on (x / y)">Front</button><button class="tiny ghost" data-view="top" title="From above (x / z)">Top</button><button class="tiny ghost" data-view="side" title="From the right (z / y)">Side</button><button class="tiny ghost" data-view="iso" title="Three-quarter view">Iso</button></span>
       <label class="inl" title="What the little screens show: what the clock is showing right now (pixels this page pushed, or the clock's own face emulated), or the drafts on the tube cards"><span>show</span> <select id="stShow"><option value="glass">on the clock now</option><option value="draft">my drafts</option></select></label>
       <label class="inl" title="Centre-to-centre distance between neighbouring tubes. Editing it re-spaces the row evenly"><span>pitch</span> <input type="number" id="stPitch" step="0.1" min="10" max="200" style="width:70px"> mm</label>
       <label class="inl" title="Dragging snaps to this grid; hold Shift for 0.1 mm"><span>snap</span> <select id="stSnap"><option value="1">1 mm</option><option value="0.5">0.5 mm</option><option value="5">5 mm</option><option value="0">off</option></select></label>
       <button class="mini" id="stCal" title="No ruler needed: puts a diagonal-line + ruler pattern across the tubes; nudge the pitch until the lines run straight from tube to tube">🎯 Calibrate</button>
-      <button class="mini ghost" id="stSaveClock" title="Stores the layout on the clock (/layout.json, a few hundred bytes) so a phone, the bridge or another computer gets the same geometry">💾 to the clock</button>
-      <button class="mini ghost" id="stLoadClock" title="Fetch the layout stored on the clock">⤓ from the clock</button>
-      <button class="tiny ghost" id="stJson" title="esptube.layout/1 — compact JSON (a uniform row is one generator)">⬇ layout.json</button><button class="tiny ghost" id="stUsda" title="USD text: opens in Blender (File → Import → USD), usdview, Omniverse">⬇ .usda</button><button class="tiny ghost" id="stUsdz" title="USDZ with each tube's current picture as an emissive texture: AR Quick Look on iPhone / Finder preview, Blender">⬇ .usdz</button>
-      <button class="mini ghost" id="stReset" title="Back to the KNOWN PHYSICAL layout of this clock: the measured model (base 216 × 63.5 mm, six tubes at 30.5 mm). Everything you dragged or typed is undone; it is saved to the clock like any other edit.">↺ measured layout</button>
+      <button class="mini ghost" id="stSaveClock" title="Stores the layout on the clock (/layout.json, a few hundred bytes) so a phone, the bridge or another computer gets the same geometry">💾 Save to clock</button>
+      <button class="mini ghost" id="stLoadClock" title="Fetch the layout stored on the clock">📥 Load from clock</button>
+      <button class="tiny ghost" id="stJson" title="esptube.layout/1 — compact JSON (a uniform row is one generator)">⬇ Export layout.json</button><button class="tiny ghost" id="stUsda" title="USD text: opens in Blender (File → Import → USD), usdview, Omniverse">⬇ Export .usda</button><button class="tiny ghost" id="stUsdz" title="USDZ with each Tile's current picture as an emissive texture: AR Quick Look on iPhone / Finder preview, Blender">⬇ Export .usdz</button>
+      <button class="mini ghost" id="stReset" title="Back to the KNOWN PHYSICAL layout of this clock: the measured model (base 216 × 63.5 mm, six tubes at 30.5 mm). Everything you dragged or typed is undone; it is saved to the clock like any other edit.">↺ Reset layout</button>
       <span class="note" id="stSync" style="margin:0" title="The layout lives ON THE CLOCK (/layout.json): every page — this file, the clock-hosted copy, a phone — loads it on connect and saves edits back, so they all show the same thing. The newest edit wins."></span>
     </div>
     <div id="stCalRow" class="row tight" hidden style="margin-top:6px">
@@ -814,12 +815,12 @@ python3 tools/bridge/bridge.py serve         # leave it running; this panel take
       <button class="mini primary" id="stCalDone">✓ lines are straight</button><button class="mini ghost" id="stCalCancel">cancel</button>
     </div>
     <div id="stageView"><div id="stageScene"></div><div id="stageHud" class="note"></div><div id="stageLive" class="note" style="position:absolute;top:6px;right:8px;margin:0;font-weight:700"></div></div>
-    <div class="row tight" id="stageInspect" style="flex-wrap:wrap;margin-top:8px"></div>
+    <div class="row tight" id="stageInspect" style="margin-top:8px"></div>
   </div>
 
   <!-- ===================== SPANNING CANVAS ===================== -->
   <div class="panel">
-    <h2>🖼️ Spanning canvas <span class="sub">all the tubes act as one wide screen</span></h2>
+    <h2>🖼️ Spanning canvas <span class="sub">all Tiles form one wide Space</span></h2>
     <div class="row">
       <label class="fld">Source
         <select id="spanSrc">
@@ -828,7 +829,7 @@ python3 tools/bridge/bridge.py serve         # leave it running; this panel take
           <option value="gradient">🌈 Gradient</option>
           <option value="html">🌐 HTML</option>
         </select></label>
-      <button class="primary" id="spanPushBtn">📤 Push spanning now</button>
+      <button class="primary" id="spanPushBtn">📤 Push Space now</button>
     </div>
     <div id="spanCtls" class="params"></div>
     <div class="strip" id="spanPreview"></div>
@@ -839,7 +840,7 @@ python3 tools/bridge/bridge.py serve         # leave it running; this panel take
 
   <!-- ===================== ANIMATION STUDIO ===================== -->
   <div class="panel">
-    <h2>✨ Animation studio <span class="sub">moving effects · pushes only changed tubes</span></h2>
+    <h2>✨ Animation studio <span class="sub">moving effects · pushes only changed Tiles</span></h2>
     <div class="row">
       <label class="fld" style="min-width:220px">🎞️ Animation
         <select id="animSel"></select></label>
@@ -850,7 +851,7 @@ python3 tools/bridge/bridge.py serve         # leave it running; this panel take
         </div></label>
       <div class="row tight" style="align-self:flex-end">
         <button class="primary" id="animStart">▶ Start</button>
-        <button id="animStop">⏹ Stop</button>
+        <button class="ghost" id="animStop">⏹ Stop</button>
         <button class="ghost mini" id="animReset">⟳ Reset</button>
       </div>
       <span class="pill" style="margin-left:auto"><span id="engDot" class="dot"></span><span id="engStat">preview only</span></span>
@@ -877,12 +878,12 @@ python3 tools/bridge/bridge.py serve         # leave it running; this panel take
     <h2>🔧 Flashing &amp; tools <span class="sub">terminal commands · copy &amp; run</span></h2>
       <div class="note" style="margin-top:10px">HTML can't flash the ESP32 — run these in a terminal
         from the <code>tools/</code> folder. Copy with the buttons. (For everyday poking over the cable, the 🧷 USB serial panel above replaces <code>monitor.sh</code>.)</div>
-      <div class="cmd"><pre id="c1">./flash.sh                # build + USB-flash (default port /dev/cu.usbserial-1220)</pre><button class="tiny" data-copy="c1">Copy</button></div>
-      <div class="cmd"><pre id="c2">./monitor.sh              # serial console @115200 (Ctrl-C to quit)</pre><button class="tiny" data-copy="c2">Copy</button></div>
+      <div class="cmd"><pre id="c1">./flash.sh                # build + USB-flash (default port /dev/cu.usbserial-1220)</pre><button class="tiny ghost" data-copy="c1">📋 Copy</button></div>
+      <div class="cmd"><pre id="c2">./monitor.sh              # serial console @115200 (Ctrl-C to quit)</pre><button class="tiny ghost" data-copy="c2">📋 Copy</button></div>
       <div class="cmd"><pre id="c3">pio run -d ../firmware/custom-fw -e esptube -t upload --upload-port esptube.local
-                          # OTA update over WiFi (no cable)</pre><button class="tiny" data-copy="c3">Copy</button></div>
+                          # OTA update over WiFi (no cable)</pre><button class="tiny ghost" data-copy="c3">📋 Copy</button></div>
       <div class="cmd"><pre id="c4">./esptube status          # pretty-print /status  (set ESPTUBE_IP or use esptube.local)
-./esptube text 0 HI       # quick CLI poke (tube 0 = far right)</pre><button class="tiny" data-copy="c4">Copy</button></div>
+./esptube text 0 HI       # quick CLI poke (tube 0 = far right)</pre><button class="tiny ghost" data-copy="c4">📋 Copy</button></div>
       <div class="note">The clock also serves its own on-device panel at <code>http://esptube.local</code>.
         This helper is a richer, offline-first companion.</div>
   </div>
