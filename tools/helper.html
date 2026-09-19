@@ -428,9 +428,9 @@
       <div class="barcol">
         <span class="lbl">🕯️ Nixie message <span class="note" style="margin:0">— the clock draws it in nixie letters, nothing is pushed</span></span>
         <div class="row tight">
-          <input type="text" id="nxText" placeholder="HELLO WORLD" maxlength="80" style="width:150px" spellcheck="false">
-          <select id="nxEffect" title="how it shows"><option value="static">Static</option><option value="flash">⚡ Flash</option><option value="scroll">➡️ Scroll</option></select>
-          <label class="inl" title="flash / scroll step">every <input type="number" id="nxMs" value="400" min="60" max="10000" step="20" style="width:64px"> ms</label>
+          <input type="text" id="nxText" placeholder="HELLO WORLD" maxlength="240" style="width:150px" spellcheck="false">
+          <select id="nxEffect" title="how the clock plays it (all rendered on-device from the nixie glyphs)"><option value="static">Static</option><option value="flash">⚡ Flash</option><option value="scroll">➡️ Scroll (smooth)</option><option value="vscroll">⬇️ Vertical slide</option><option value="vpage">⏬ Vertical pages</option><option value="scrollstep">➡ Step (legacy)</option></select>
+          <label class="inl" title="motion rate: flash toggle · scroll glyph-width · page dwell">every <input type="number" id="nxMs" value="400" min="60" max="10000" step="20" style="width:64px"> ms</label>
           <button class="mini primary" id="nxShow" title="Show it on the clock">📣 Show</button>
         </div>
         <div class="row tight">
@@ -787,7 +787,6 @@ python3 tools/bridge/bridge.py serve         # leave it running; this panel take
     </div>
     <div id="stageView"><div id="stageScene"></div><div id="stageHud" class="note"></div></div>
     <div class="row tight" id="stageInspect" style="flex-wrap:wrap;margin-top:8px"></div>
-    <div class="note" id="stageNote" style="margin:6px 0 0"></div>
   </div>
 
   <!-- ===================== SPANNING CANVAS ===================== -->
@@ -847,8 +846,7 @@ python3 tools/bridge/bridge.py serve         # leave it running; this panel take
 
   <!-- ===================== FLASHING & TOOLS ===================== -->
   <div class="panel">
-    <details class="tools">
-      <summary>🔧 Flashing &amp; tools</summary>
+    <h2>🔧 Flashing &amp; tools <span class="sub">terminal commands · copy &amp; run</span></h2>
       <div class="note" style="margin-top:10px">HTML can't flash the ESP32 — run these in a terminal
         from the <code>tools/</code> folder. Copy with the buttons. (For everyday poking over the cable, the 🧷 USB serial panel above replaces <code>monitor.sh</code>.)</div>
       <div class="cmd"><pre id="c1">./flash.sh                # build + USB-flash (default port /dev/cu.usbserial-1220)</pre><button class="tiny" data-copy="c1">Copy</button></div>
@@ -859,7 +857,6 @@ python3 tools/bridge/bridge.py serve         # leave it running; this panel take
 ./esptube text 0 HI       # quick CLI poke (tube 0 = far right)</pre><button class="tiny" data-copy="c4">Copy</button></div>
       <div class="note">The clock also serves its own on-device panel at <code>http://esptube.local</code>.
         This helper is a richer, offline-first companion.</div>
-    </details>
   </div>
 
   <div class="note" style="text-align:center;padding:6px 0 20px">
@@ -1061,7 +1058,7 @@ function dotPath(obj,path){ if(!path) return obj;
 /* served by the clock itself (http://esptube.local/helper, or 192.168.4.1/helper on its hotspot)
    the clock is simply where this page came from — same origin, no IP to type */
 const SERVED_BY_CLOCK = location.protocol==='http:' && /^\/helper/.test(location.pathname) && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname);
-function base(){ let ip=(localStorage.getItem(LS.ip)||(SERVED_BY_CLOCK?location.host:'<clock-ip>')).trim();
+function base(){ let ip=(localStorage.getItem(LS.ip)||(SERVED_BY_CLOCK?location.host:'esptube.local')).trim();
   ip=ip.replace(/^https?:\/\//i,'').replace(/\/+$/,''); return 'http://'+ip; }
 let _pausedToastAt=0;
 async function api(path,opt={},timeout=12000){
@@ -3235,10 +3232,11 @@ function captureBlocked(){ if(window.isSecureContext && navigator.mediaDevices &
   return 'this browser does not offer camera / screen capture'; }
 function captureNote(){ const n=$('#lvSecure'); if(!n) return; const why=captureBlocked(); const k=$('#lvSrc').value; const needs=(k==='camera'||k==='screen');
   if(!why||!needs){ n.hidden=true; return; }
-  const clock=base().replace(/^https?:\/\//,''); const url=CONSOLE_URL+'?clock='+encodeURIComponent(clock);
-  n.hidden=false; n.innerHTML='🔒 <b>Camera and screen capture are off here</b> — '+why+'. Open the console from <b>localhost</b> instead (same page, a secure context, and your scenes live in one place):<br>'
-    +'<code>python3 tools/console.py '+clock+'</code> &nbsp;→&nbsp; <a href="'+url+'" target="_blank" rel="noopener">'+url+'</a> &nbsp;(the bridge’s <code>serve</code> starts it too). '
-    +'Opening <code>tools/helper.html</code> as a file works as well. 🎭 Characters, 🎞️ files and ✨ animations stream fine from this page.'; }
+  const clock=base().replace(/^https?:\/\//,'');
+  n.hidden=false; n.innerHTML='🔒 <b>Camera and screen capture are off here</b> — '+why+'. Easiest fix: <b>open <code>tools/helper.html</code> as a local file</b> (double-click it — a <code>file://</code> page is a secure context, so capture just works). '
+    +'Or use the 📡 <b>Bridge</b> panel for webcam / screen / a browser tab (it captures on your computer and streams in). '
+    +'🎭 Characters, 🎞️ files and ✨ animations stream fine from this page as-is. '
+    +'<span class="note" style="margin:0">Legacy: <code>python3 tools/console.py '+clock+'</code> serves this page from localhost too.</span>'; }
 async function liveStart(){ const kind=$('#lvSrc').value;
   if((kind==='camera'||kind==='screen') && captureBlocked()){ captureNote(); toast('🔒 Capture needs the console on localhost — see the note under Source','bad'); return; } LIVE.fmt=$('#lvFmt').value; LIVE.layout=$('#lvLayout').value; LIVE.dither=$('#lvDither').checked; LIVE.fpsMode=$('#lvFps').value;
   cycleStop(); stopPushing(); forgetDevice(); liveStopSource();
@@ -3399,7 +3397,7 @@ const Stage={ yaw:-26, pitch:14, zoom:1, S:5.2, sel:null, show:'glass', els:{}, 
       if(!mine||theirs>mine){ state.layout=onClock; this.changed('layout loaded from the clock (edited '+new Date(theirs).toLocaleString()+')',true); }
       else if(mine>theirs) this.saveToClock(true); else this.syncNote(); }catch(e){} },
   down(e){ const svEl=e.target.closest('.sv'); const v=$('#stageView'); const sx=e.clientX, sy=e.clientY; let moved=false; try{ v.setPointerCapture(e.pointerId); }catch(_){}
-    if(svEl){ const out=+svEl.dataset.out; this.select(out); const d0=Layout.get(state.layout,out), p0=d0.pos.slice();
+    if(svEl){ const out=+svEl.dataset.out; this.select(out,true); const d0=Layout.get(state.layout,out), p0=d0.pos.slice();   // fromCard=true: highlight+inspect only, DON'T scrollIntoView the Tubes card (that scrolled the stage out from under the drag)
       const mv=ev=>{ const dx=(ev.clientX-sx)/(this.S*this.zoom), dy=(ev.clientY-sy)/(this.S*this.zoom); if(Math.hypot(ev.clientX-sx,ev.clientY-sy)<4&&!moved) return; moved=true;
         const top=this.pitch>55, side=Math.abs(this.yaw)>55&&!top; let p=p0.slice(); const sgn=this.yaw<0?-1:1;
         if(top){ p[0]+=dx; p[2]+=dy; } else if(side){ p[2]+=dx*sgn*-1; p[1]-=dy; } else { p[0]+=dx; p[1]-=dy; }
