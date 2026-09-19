@@ -426,12 +426,13 @@
           <span id="handsOffInd" style="display:none;color:var(--amber)">· 🔌 auto-push paused <a href="#" id="handsOffResume" title="Let auto-push widgets and restore-on-connect push again">resume</a></span></span>
       </div>
       <div class="barcol">
-        <span class="lbl">🕯️ Nixie message <span class="note" style="margin:0">— the clock draws it in nixie letters, nothing is pushed</span></span>
+        <span class="lbl">🕯️ Nixie <span class="note" style="margin:0">— GLOBAL play style, used everywhere nixie renders (this message + Marquee / News / Ticker). The clock draws it; nothing is pushed.</span></span>
         <div class="row tight">
           <input type="text" id="nxText" placeholder="HELLO WORLD" maxlength="240" style="width:150px" spellcheck="false">
-          <select id="nxEffect" title="how the clock plays it (all rendered on-device from the nixie glyphs)"><option value="static">Static</option><option value="flash">⚡ Flash</option><option value="scroll">➡️ Scroll (smooth)</option><option value="vscroll">⬇️ Vertical slide</option><option value="vpage">⏬ Vertical pages</option><option value="scrollstep">➡ Step (legacy)</option></select>
-          <label class="inl" title="motion rate: flash toggle · scroll glyph-width · page dwell">every <input type="number" id="nxMs" value="400" min="60" max="10000" step="20" style="width:64px"> ms</label>
-          <button class="mini primary" id="nxShow" title="Show it on the clock">📣 Show</button>
+          <select id="nxEffect" title="Global nixie style — applies to every nixie surface (rendered on-device from the glyphs)"><option value="static">Static</option><option value="flash">⚡ Flash</option><option value="scroll">➡️ Scroll (smooth)</option><option value="vscroll">⬇️ Vertical slide</option><option value="vpage">⏬ Vertical pages</option><option value="scrollstep">➡ Step (legacy)</option></select>
+          <label class="inl" title="motion rate: flash toggle · scroll glyph-width · page dwell">every <input type="number" id="nxMs" value="220" min="60" max="10000" step="20" style="width:64px"> ms</label>
+          <label class="inl" title="⚡ render nixie on-device from glyphs (zero pixels) · uncheck = text effects push pixels with their own font/colour"><input type="checkbox" id="nxNative" checked> ⚡ native</label>
+          <button class="mini primary" id="nxShow" title="Show this message on the clock, in the global style">📣 Show</button>
         </div>
         <div class="row tight">
           <label class="inl" title="how long">⏳ <input type="number" id="nxSecs" value="90" min="1" max="359999" style="width:72px"> s</label>
@@ -877,8 +878,14 @@ const NTUBE=6;                 // 6 slots, index 0 = far RIGHT ... 5 = far LEFT
 const ORDER=[5,4,3,2,1,0];     // physical left -> right display order
 const CW=135, CH=240;          // panel resolution
 const RAW565_BIG_ENDIAN=true;  // hardware-confirmed: high byte first (big-endian RGB565)
-const LS={ ip:'esptube_ip', scenes:'esptube_scenes', shows:'esptube_shows', last:'ESPTUBE_STATE_V3',
+const LS={ ip:'esptube_ip', scenes:'esptube_scenes', shows:'esptube_shows', nixie:'esptube_nixie', last:'ESPTUBE_STATE_V3',
   cycle:'esptube_cycle', keys:'esptube_keys', pool:'esptube_imgpool', legacy:'esptube_last' };  // all browser-local; nothing here is sent to the device
+// GLOBAL nixie style — one setting used EVERYWHERE nixie text renders (the 🕯️ message panel and
+// the Marquee / News / Ticker native output). effect ∈ static|flash|scroll|vscroll|vpage|scrollstep;
+// ms = motion rate; native = render on-device from glyphs (⚡) vs push pixels (🎨).
+let nixieCfg = { effect:'scroll', ms:220, native:true };
+function loadNixieCfg(){ try{ nixieCfg=Object.assign(nixieCfg, JSON.parse(localStorage.getItem(LS.nixie)||'{}')); }catch(e){} return nixieCfg; }
+function saveNixieCfg(){ try{ localStorage.setItem(LS.nixie,JSON.stringify(nixieCfg)); }catch(e){} }
 // Free-tier API keys, saved in THIS browser only (never pushed to the device or git).
 // Not a real secret in localStorage for a personal tool; used as the default when a
 // per-tube/animation key field is left blank.
@@ -2332,16 +2339,14 @@ function pingpong(t,speed){ const ph=(t*(speed/50))%2; return (ph<1?ph:2-ph)*100
 
 const ANIMS={
   marquee:{ name:'🏃 Marquee (scrolling text)', kind:'span',
-    desc:'Text scrolling across the clock. ⚡ Native = the clock scrolls it itself from baked nixie glyphs (zero pixels); Direction sets horizontal / vertical slide / vertical pages. 🎨 Pixels streams your chosen font/colour.',
+    desc:'Text across the clock. Uses the GLOBAL nixie style (🕯️ panel: scroll / vertical slide / vertical pages / …) when ⚡ Native is on; the pixel fields below apply only in 🎨 Pixels mode.',
     params:[ {k:'text',label:'Text',type:'text',def:'ESPTUBE  ★  '},
-      {k:'output',label:'Output',type:'select',options:[['native','⚡ Native nixie'],['pixels','🎨 Pixels']],def:'native'},
-      {k:'dir',label:'Direction (native)',type:'select',options:[['scroll','→ Horizontal'],['vscroll','↓ Vertical slide'],['vpage','⇊ Vertical pages'],['scrollstep','→ Step (legacy)']],def:'scroll'},
       {k:'size',label:'Size (pixels)',type:'range',min:40,max:240,def:170},
-      {k:'speed',label:'Speed px/s',type:'range',min:10,max:320,def:90},
+      {k:'speed',label:'Speed px/s (pixels)',type:'range',min:10,max:320,def:90},
       {k:'font',label:'Font (pixels)',type:'font',def:'display'},
       {k:'color',label:'Color (pixels)',type:'color',def:'#ffb454'},
       {k:'bg',label:'Background (pixels)',type:'color',def:'#000000'} ],
-    native(p){ return {effect:p.dir||'scroll', text:fmtNative(p.text), ms:speedToMs(p.speed)}; },
+    native(p){ return {effect:nixieCfg.effect, text:fmtNative(p.text), ms:nixieCfg.ms}; },
     draw(g,W,H,t,p){ const txt=p.text||'';
       if(p.font==='nixie'){                                   // real nixie: per-tube glass + ghost + bloom
         nixieSpanGlass(g,W,H,p.bg); const col=nixieColor(p.color), wt=nixieWeight();
@@ -2355,7 +2360,6 @@ const ANIMS={
   bigclock:{ name:'🕐 Big clock / countdown / timer / epoch', kind:'span',
     desc:'Time across all tubes. ⚡ Native: Clock uses the built-in nixie clock face; the timers/epoch send the current string as it changes (≈1/s, zero pixels). 🎨 Pixels streams big digits.',
     params:[ {k:'mode',label:'Mode',type:'select',options:[['clock','Clock'],['countdown','Countdown'],['countup','Count up'],['stopwatch','Stopwatch'],['timer','Timer'],['epoch','Live Unix epoch']],def:'clock'},
-      {k:'output',label:'Output',type:'select',options:[['native','⚡ Native nixie'],['pixels','🎨 Pixels']],def:'native'},
       {k:'target',label:'Target (HH:MM / secs)',type:'text',def:''},
       {k:'unix',label:'Unix ts (countdown/up)',type:'text',def:''},
       {k:'showSecs',label:'Show seconds',type:'bool',def:true},
@@ -2460,14 +2464,13 @@ const ANIMS={
       {k:'url',label:'JSON URL',type:'text',def:''},
       {k:'field',label:'Field path',type:'text',def:''},
       {k:'label',label:'Label',type:'text',def:''},
-      {k:'output',label:'Output',type:'select',options:[['native','⚡ Native nixie scroll'],['pixels','🎨 Big number']],def:'native'},
       {k:'refresh',label:'Refresh (s)',type:'range',min:10,max:600,def:60},
       {k:'color',label:'Color (pixels)',type:'color',def:'#ffffff'},
       {k:'bg',label:'Background (pixels)',type:'color',def:'#0b1220'} ],
     native(p,st){ if(!st||st.value==null) return null;
       const val=Math.round(st.value*100)/100, up=(st.change||0)>=0;
       const chg=(up?'+':'-')+Math.abs(Math.round((st.change||0)*100)/100)+(st.changeIsPct?'%':'');
-      return {effect:'scroll', text:fmtNative([st.label||'',val,chg,st.unit||''].join(' ')), ms:900}; },
+      return {effect:nixieCfg.effect, text:fmtNative([st.label||'',val,chg,st.unit||''].join(' ')), ms:nixieCfg.ms}; },
     async poll(p,st){ st.err=''; try{
       if(p.source==='crypto'){ const r=await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(p.cryptoId)}&vs_currencies=${encodeURIComponent(p.cryptoCur)}&include_24hr_change=true`);
         const j=await r.json(); const row=j[p.cryptoId.toLowerCase()]; if(!row) throw new Error('coin not found');
@@ -2497,14 +2500,13 @@ const ANIMS={
     desc:'Scrolling headlines via rss2json (any RSS feed URL; no key needed, optional key for higher limits). Clear message if blocked.',
     params:[ {k:'feedUrl',label:'RSS feed URL',type:'text',def:'https://feeds.bbci.co.uk/news/world/rss.xml'},
       {k:'apiKey',label:'rss2json key (optional)',type:'text',def:''},
-      {k:'output',label:'Output',type:'select',options:[['native','⚡ Native nixie'],['pixels','🎨 Pixels']],def:'native'},
       {k:'refresh',label:'Refresh (s)',type:'range',min:30,max:1800,def:300},
       {k:'size',label:'Size (pixels)',type:'range',min:40,max:220,def:150},
-      {k:'speed',label:'Speed px/s',type:'range',min:10,max:300,def:80},
+      {k:'speed',label:'Speed px/s (pixels)',type:'range',min:10,max:300,def:80},
       {k:'font',label:'Font (pixels)',type:'font',def:'display'},
       {k:'color',label:'Color (pixels)',type:'color',def:'#ffd166'},
       {k:'bg',label:'Background (pixels)',type:'color',def:'#0b1020'} ],
-    native(p,st){ return st&&st.text ? {effect:'scroll', text:fmtNative(st.text), ms:speedToMs(p.speed)} : null; },
+    native(p,st){ return st&&st.text ? {effect:nixieCfg.effect, text:fmtNative(st.text), ms:nixieCfg.ms} : null; },
     async poll(p,st){ st.err=''; try{
       const feed=(p.feedUrl||'').trim(); if(!feed) throw new Error('set a feed URL');
       const nk=p.apiKey||apiKeys.rss2json;
@@ -2587,7 +2589,6 @@ const ANIMS={
   alert:{ name:'🚨 Alert flash', kind:'span',
     desc:'Blink a message + LEDs for notifications.',
     params:[ {k:'text',label:'Text',type:'text',def:'⚠ ALERT'},{k:'rate',label:'Flashes/s',type:'range',min:0.5,max:8,step:0.5,def:2},
-      {k:'output',label:'Output',type:'select',options:[['native','⚡ Native nixie flash'],['pixels','🎨 Pixels + LEDs']],def:'native'},
       {k:'colorA',label:'Flash color (pixels)',type:'color',def:'#ff3b3b'},{k:'colorB',label:'Off color (pixels)',type:'color',def:'#000000'},
       {k:'textColor',label:'Text color (pixels)',type:'color',def:'#ffffff'},{k:'size',label:'Size (pixels)',type:'range',min:60,max:220,def:130},
       {k:'font',label:'Font (pixels)',type:'font',def:'display'} ],
@@ -2670,7 +2671,7 @@ function fmtNative(s){
   return o.replace(/\s+/g,' ').trim().slice(0,255);
 }
 const speedToMs=px=>Math.max(60,Math.min(5000,Math.round(135000/Math.max(5,px||90))));  // px/s -> ms per glyph-width
-function nativeActive(){ const a=currentAnim(); return !!(a&&a.native&&(engine.params.output||'native')==='native'); }
+function nativeActive(){ const a=currentAnim(); return !!(a&&a.native&&nixieCfg.native); }   // global ⚡/🎨 toggle
 async function sendNative(cmd){
   if(!cmd) return;
   if(cmd.preset!=null) return postBare('/preset/'+(cmd.preset|0));
@@ -3562,6 +3563,12 @@ function wireGlobals(){
   $('#lvPick').onclick=()=>$('#lvFile').click();
   $('#lvFile').addEventListener('change',()=>{ if($('#lvFile').files[0]) toast('📂 '+$('#lvFile').files[0].name+' — press ▶ Go live','ok'); });
   $('#nxShow').onclick=nixieShow; $('#nxText').addEventListener('keydown',e=>{ if(e.key==='Enter') nixieShow(); });
+  // GLOBAL nixie style: these three controls are the single source of truth; every nixie surface reads nixieCfg.
+  loadNixieCfg();
+  $('#nxEffect').value=nixieCfg.effect; $('#nxMs').value=nixieCfg.ms; $('#nxNative').checked=nixieCfg.native;
+  const nxSync=()=>{ nixieCfg.effect=$('#nxEffect').value; nixieCfg.ms=Math.max(60,+$('#nxMs').value||220); nixieCfg.native=$('#nxNative').checked;
+    saveNixieCfg(); engine.lastNativeCmd=null; };   // re-send any running native effect in the new style
+  $('#nxEffect').addEventListener('change',nxSync); $('#nxMs').addEventListener('change',nxSync); $('#nxNative').addEventListener('change',nxSync);
   $('#nxCount').onclick=nixieCountdownStart;
   $('#nxStop').onclick=()=>act(postBare('/nixie/stop'),'Back to the clock').then(()=>setTimeout(poll,150));
   $('#pausedResume').onclick=e=>{ e.preventDefault(); setPaused(false); };
