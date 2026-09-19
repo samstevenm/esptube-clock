@@ -296,10 +296,73 @@ def make_update(fmt, tile, prev_sig, dither, band_on, cache):
 # ---- the USB serial port: open, ride out the reset, step the baud up ------------------------------
 BOOT_BAUD = 115200
 
-def open_serial(port, baud, verbose=True):
+class RawSerial:
+    """A pyserial-shaped wrapper backed by a plain POSIX fd. pyserial's macOS open sets a custom
+    baud (IOSSIOSPEED) and exclusive access (TIOCEXCL) which a **PTY rejects** ([Errno 25]); this
+    opens the fd directly and puts it in raw mode, so bridge can drive a node over a PTY with no
+    hardware (--serial-raw). Baud is nominal (a PTY has none). Implements the read/write/in_waiting/
+    reset_input_buffer/close/baudrate/timeout surface the Link uses."""
+    def __init__(self, port, baud=BOOT_BAUD):
+        self.port = port; self.baudrate = baud or BOOT_BAUD; self.timeout = 0.2; self.write_timeout = None
+        self.fd = os.open(port, os.O_RDWR | os.O_NOCTTY | getattr(os, "O_NONBLOCK", 0))
+        try:                                                 # raw mode so ESP/1 bytes pass through untouched
+            import termios
+            a = termios.tcgetattr(self.fd)
+            a[0] = a[1] = a[3] = 0                            # iflag / oflag / lflag: no xlate, echo or canon
+            a[2] = (a[2] & ~termios.PARENB & ~termios.CSTOPB & ~termios.CSIZE) | termios.CS8 | termios.CREAD | termios.CLOCAL
+            a[6][termios.VMIN] = 0; a[6][termios.VTIME] = 0
+            termios.tcsetattr(self.fd, termios.TCSANOW, a)
+        except Exception:
+            pass                                             # a PTY may not support termios fully; the raw fd still works
+    def read(self, n=1):
+        end = time.monotonic() + (self.timeout or 0); buf = b""
+        while len(buf) < n:
+            r, _, _ = select.select([self.fd], [], [], max(0, end - time.monotonic()))
+            if not r: break
+            try: chunk = os.read(self.fd, n - len(buf))
+            except (BlockingIOError, InterruptedError): continue
+            except OSError: break
+            if not chunk: break
+            buf += chunk
+            if not self.timeout: break
+        return buf
+    def write(self, b):
+        mv = memoryview(b); total = 0
+        while total < len(mv):
+            try: total += os.write(self.fd, mv[total:])
+            except BlockingIOError: select.select([], [self.fd], [], 1.0)
+            except OSError: break
+        return total
+    def fileno(self): return self.fd                     # so select.select([ser], …) works (the Link polls readability)
+    def flush(self): pass
+    reset_output_buffer = flush
+    def reset_input_buffer(self):
+        try:
+            while True:
+                r, _, _ = select.select([self.fd], [], [], 0)
+                if not r or not os.read(self.fd, 65536): break
+        except OSError: pass
+    @property
+    def in_waiting(self):
+        try:
+            import fcntl, termios, array
+            b = array.array("i", [0]); fcntl.ioctl(self.fd, termios.FIONREAD, b); return b[0]
+        except Exception: return 0
+    def close(self):
+        try: os.close(self.fd)
+        except OSError: pass
+
+def open_serial(port, baud, verbose=True, raw=False):
     """The node boots at 115200 and opening the port resets it (the flasher's DTR auto-reset), so:
     open at 115200 with DTR/RTS low, wait for the boot log to finish, then ask the shell for the
-    fast rate (`baud N`) and switch our side. Returns a pyserial port ready for ESP/1 frames."""
+    fast rate (`baud N`) and switch our side. Returns a pyserial port ready for ESP/1 frames.
+
+    raw=True (--serial-raw): open the port as a plain fd (no baud/exclusive ioctls) so a macOS PTY
+    works, and SKIP the boot-log wait + baud ladder (a PTY has no baud, and a non-ESP32 node has no
+    boot shell) — hand back a channel that speaks ESP/1 datagrams straight away."""
+    if raw:
+        if verbose: print(f"serial: {port} (raw fd — no baud/exclusive ioctls; PTY bench, skipping boot/baud handshake)")
+        return RawSerial(port, baud or BOOT_BAUD)
     ser = serial.Serial(); ser.port = port; ser.baudrate = BOOT_BAUD; ser.timeout = 0.2
     ser.dtr = False; ser.rts = False
     try:
@@ -412,9 +475,10 @@ class Link:
         """Blocking connect + HELLO + PING (runs in ensure_open's thread)."""
         self.close()
         if self.a.serial:
-            if serial is None:
+            raw = getattr(self.a, "serial_raw", False)
+            if serial is None and not raw:
                 raise SystemExit(SERIAL_HINT)
-            self.ser = open_serial(self.a.serial, self.a.baud, verbose=not self.quiet)
+            self.ser = open_serial(self.a.serial, self.a.baud, verbose=not self.quiet, raw=raw)
             self.ser.timeout = self.ser.write_timeout = ACK_TIMEOUT
             self.a.baud = self.ser.baudrate                      # report the rate we actually got
         else:
@@ -1606,6 +1670,7 @@ def main():
     conn.add_argument("--port", type=int, default=5555, help="ESP/1 TCP port (default 5555)")
     conn.add_argument("--conns", type=int, default=0, help="TCP connections to the node (default 0 = one per populated tube; 1 = a single socket)")
     conn.add_argument("--serial", help="stream over this serial port instead of TCP (/dev/cu.usbserial-*)")
+    conn.add_argument("--serial-raw", action="store_true", help="open --serial as a raw fd (no pyserial baud/exclusive ioctls) so a macOS PTY works — bench a node without hardware; skips the ESP32 boot/baud handshake and speaks ESP/1 datagrams straight away")
     conn.add_argument("--transport", choices=["auto", "tcp", "serial"], default="auto",
                       help="auto (default): the network if the node answers, else the USB cable; or force one")
     conn.add_argument("--baud", type=int, default=None, help="fastest serial rate to try (default 1500000: measured clean on this clock's CH340, 119 KB/s; every rung is verified and the ladder falls 1000000 → 460800 → 230400 → 115200; 921600 does not work; shell 115200)")
@@ -1653,8 +1718,8 @@ def main():
             raise SystemExit(f"--fps wants auto or a number (got {a.fps!r})")
     if a.baud is None:
         a.baud = 115200 if a.cmd == "shell" else 1500000         # measured on the CH340: 1.5 M clean; the ladder verifies every rung anyway
-    if a.serial and serial is None and a.cmd != "shell":
-        raise SystemExit(SERIAL_HINT)
+    if a.serial and serial is None and a.cmd != "shell" and not getattr(a, "serial_raw", False):
+        raise SystemExit(SERIAL_HINT)   # --serial-raw uses a plain fd (RawSerial), so pyserial isn't required
     a.fake = a.fake or os.environ.get("ESPTUBE_FAKE") == "1"
     if a.fake:
         a.host, a.port = start_fake_node(a.token); a.serial = None
