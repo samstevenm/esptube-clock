@@ -2888,7 +2888,17 @@ function buildParamsForm(){ const c=$('#animParams'), a=currentAnim(), p=engine.
       if(f.k==='refresh'||f.k==='artist'||f.k==='title') startPoller();   // karaoke: re-fetch lyrics when the song changes
       if(f.k==='audio'){ if(node.value==='off'){ AUDIO.disable(); } else { AUDIO.enable(node.value).then(()=>toast('🎧 audio on ('+node.value+')','ok')).catch(err=>{ toast('🎧 '+((err&&err.message)||err),'bad'); node.value='off'; p.audio='off'; }); } }   // the select change is the user gesture that unlocks capture
       autosave(); });
-    c.appendChild(el('label',{class:'fld'},[f.label,node])); }); }
+    c.appendChild(el('label',{class:'fld'},[f.label,node])); });
+  if(a.params.some(f=>f.k==='audio')){                                  // 🎧 make "the beat part" obvious: a live status + why mic/tab may be off
+    c.appendChild(el('div',{id:'beatStat',class:'note',style:'margin:6px 0 0;color:var(--amber);font-weight:600'},'🎧 beat: —'));
+    const why=(typeof captureBlocked==='function')?captureBlocked():((!window.isSecureContext||!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia))?'not a secure page':'');
+    if(why) c.appendChild(el('div',{class:'note',style:'margin:2px 0 0'},'🔒 Mic / tab audio is off here — '+why+'. Open <b>tools/helper.html</b> as a local file (double-click → <code>file://</code> is secure) for real beat detection; on this page the <b>BPM</b> knob drives the LEDs.'));
+    updateBeatStat(); }
+  }
+function updateBeatStat(){ const s=document.getElementById('beatStat'); if(!s) return; const p=engine.params||{};
+  if(AUDIO.active()){ const on=(performance.now()-AUDIO.beatAt)<140; s.textContent='🎧 '+AUDIO.kind+' · '+(AUDIO.bpm?AUDIO.bpm+' BPM':'listening…')+' · level '+Math.round(AUDIO.level()*100)+'% · '+(on?'● BEAT':'○'); }
+  else if(p.audio&&p.audio!=='off'){ s.textContent='🎧 '+p.audio+' selected but not capturing — pick it again to grant access (needs a secure page)'; }
+  else { s.textContent='⏱️ BPM '+(p.bpm||120)+' — LEDs on the beat (no mic); pick 🎤/🖥️ above for real detection'; } }
 
 function startPoller(){ stopPoller(); const a=currentAnim(); if(!a||!a.poll) return;
   const run=async()=>{ if(engine.pollBusy) return; engine.pollBusy=true; try{ await a.poll(engine.params,engine.runState); }catch(e){ engine.runState.err=(e&&e.message)||'fetch failed'; } engine.pollBusy=false; };
@@ -2977,6 +2987,7 @@ function scheduleFrame(){ clearTimeout(engine.timer);
 async function frameLoop(){
   const t=(performance.now()-engine.t0)/1000, a=currentAnim();
   try{ if(AUDIO.active()) AUDIO.sample(); }catch(e){}   // one audio read per frame → beat/level for karaoke + VU
+  try{ updateBeatStat(); }catch(e){}
 
   let dk=null; if(a&&a.bufferKey){ try{ const k=a.bufferKey(engine.params,engine.runState,t); if(k!=null) dk=k+'|'+populatedList().length; }catch(e){} }
   if(dk===null||dk!==engine.lastDrawKey){ engine.lastDrawKey=dk; try{ drawCurrentFrame(t); }catch(e){} }   // BUFFER the composition: recompute only when content changes; animations (dk=null) redraw every frame
