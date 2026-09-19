@@ -1,0 +1,35 @@
+# Native test suites only: no PlatformIO / ESP toolchain, no hardware, no secrets, no deploy.
+# Each suite is its own step so a failure names the suite.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  native-tests:
+    name: Native test suites
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Ensure a C++ compiler (the suites default to clang++; ubuntu-latest ships it)
+        run: |
+          if ! command -v clang++ >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq clang
+          fi
+          clang++ --version | head -1
+          node --version
+
+      - name: nixie render core (test/nixie-native.sh)
+        run: bash test/nixie-native.sh
+
+      - name: ESP/1 frame codec (test/esp1-frame-native.sh)
+        run: bash test/esp1-frame-native.sh
+
+      - name: helper.html modules (test/helper-unit.mjs)
+        run: node test/helper-unit.mjs
